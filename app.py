@@ -15,7 +15,7 @@ VIDEO_IDS = [
     "Vk5-c_v4gMU",  # Magnetic
     "tbDGl7jEazA",  # Cherish (My Love)
     "_Pk6xfju3l0"   # I Got Your back(Feat. JISOO, MOMOKA of HANA)
-    "
+    "bMhDJ0S0OBA"   # It's me
 ]
 
 # サイドバーでデータ取得
