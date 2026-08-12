@@ -12,7 +12,7 @@ st.title("ILLIT MV トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標の定義:** `VPH` (直近の1時間あたり再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
-API_KEY = "ここに自分のAPIキーを貼り付ける"
+API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
 
 DEFAULT_IDS = [
     "Vk5-c_v4gMU",  # Magnetic
