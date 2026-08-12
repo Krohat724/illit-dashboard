@@ -8,7 +8,7 @@ import re
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
 # UIヘッダー（プロ投資家・業界人向けにデザインを洗練）
-st.title("ILLIT トレンド覇権ダッシュボード (MVP)")
+st.title("ILLIT MV トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標の定義:** `VPH` (直近の1時間あたり再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
