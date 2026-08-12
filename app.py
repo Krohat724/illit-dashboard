@@ -5,14 +5,15 @@ import pandas as pd
 from datetime import datetime
 import re
 
-st.set_page_config(page_title="ILLIT MV Analysis Dashboard", layout="wide")
+st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("ILLIT MV リアルタイム分析ダッシュボード")
-st.write("YouTubeのURLや動画IDを入力して、リアルタイムで再生数を取得・比較できます。")
+# UIヘッダー（プロ投資家・業界人向けにデザインを洗練）
+st.title("🔥 ILLIT トレンド覇権ダッシュボード (MVP)")
+st.markdown("**指標の定義:** `VPH` (直近の1時間あたり再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
+st.divider()
 
-API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
+API_KEY = "ここに自分のAPIキーを貼り付ける"
 
-# 初期表示用の動画IDリスト
 DEFAULT_IDS = [
     "Vk5-c_v4gMU",  # Magnetic
     "tbDGl7jEazA",  # Cherish (My Love)
@@ -23,13 +24,17 @@ DEFAULT_IDS = [
     "x_RYZsOfpKY",  # NOT CUTE ANYMORE
     "HeqsjDF7Lw0",  # 時よ止まれ（Toki Yo Tomare）
     "xRU1XXHIpIc",  # bomb
+    “wpokz1JhGl0”,  # oops!
+    “GkG60kISnfc”,  # jellyous
+    “negtrQu5mTA”,  # 빌려온 고양이 (Do the Dance)
+    “qlgEadao-Sk”,  # Almond Chocolate
+    “-nEGVrzPaiU”,  # Tick-Tack
+    “UCmgGZbfjmk”,  # Lucky Girl Syndrome
 ]
 
-# セッション状態の初期化（画面上で動画リストを保持する仕組み）
 if "video_ids" not in st.session_state:
     st.session_state.video_ids = DEFAULT_IDS.copy()
 
-# URLまたは文字列から11桁の動画IDを抽出する関数
 def extract_video_id(url_or_id):
     url_or_id = url_or_id.strip()
     if len(url_or_id) == 11 and not ("/" in url_or_id or "." in url_or_id):
@@ -40,30 +45,27 @@ def extract_video_id(url_or_id):
     return None
 
 # サイドバー設定
-st.sidebar.header("⚙️ 動画の追加・管理")
-
-# 1. 好きな動画のURL入力欄
-new_input = st.sidebar.text_input("➕ YouTube動画URLまたはIDを入力", placeholder="https://www.youtube.com/watch?v=...")
-if st.sidebar.button("動画を追加"):
+st.sidebar.header("⚙️ トレンド監視対象の追加")
+new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://www.youtube.com/watch?v=...")
+if st.sidebar.button("分析対象に追加"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in st.session_state.video_ids:
             st.session_state.video_ids.append(vid)
-            st.sidebar.success(f"動画を追加しました！ (ID: {vid})")
+            st.sidebar.success(f"追加完了 (ID: {vid})")
         else:
-            st.sidebar.warning("既にリストに存在します。")
+            st.sidebar.warning("既に監視リストに存在します。")
     else:
-        st.sidebar.error("有効なYouTube URLまたは動画IDを入力してください。")
+        st.sidebar.error("有効なURLを入力してください。")
 
-# リストのリセットボタン
-if st.sidebar.button("🗑️ リストを初期状態に戻す"):
+if st.sidebar.button("🗑️ リストをリセット"):
     st.session_state.video_ids = DEFAULT_IDS.copy()
     st.sidebar.info("初期状態に戻しました。")
 
 st.sidebar.divider()
 
-# 2. データ取得ボタン
-if st.sidebar.button("🔄 最新データを取得する"):
+# データ取得ロジック
+if st.sidebar.button("🔄 最新トレンドデータを取得"):
     if st.session_state.video_ids:
         ids_str = ",".join(st.session_state.video_ids)
         url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
@@ -89,36 +91,79 @@ if st.sidebar.button("🔄 最新データを取得する"):
 
             conn.commit()
             conn.close()
-            st.sidebar.success("最新データを取得しました！")
+            st.sidebar.success("🔥 データを取得・蓄積しました！")
 
-# データベースから表示
+# 分析・可視化ロジック（ここがSaaSの心臓部）
 conn = sqlite3.connect('youtube_stats.db')
 try:
     if st.session_state.video_ids:
         placeholders = ','.join(['?'] * len(st.session_state.video_ids))
-        query = f'''
-            SELECT * FROM multi_video_stats 
-            WHERE video_id IN ({placeholders})
-            AND id IN (SELECT MAX(id) FROM multi_video_stats GROUP BY video_id)
-        '''
+        query = f"SELECT * FROM multi_video_stats WHERE video_id IN ({placeholders})"
         df = pd.read_sql_query(query, conn, params=st.session_state.video_ids)
-        conn.close()
-
+        
         if not df.empty:
-            st.subheader("📊 各楽曲の最新再生回数")
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            stats_list = []
             
-            # 3列ずつ折り返してカードを表示
-            N_COLS = 3
-            for i in range(0, len(df), N_COLS):
-                batch = df.iloc[i:i + N_COLS]
-                cols = st.columns(N_COLS)
-                for idx, (_, row) in enumerate(batch.iterrows()):
-                    clean_title = row['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
-                    cols[idx].metric(label=clean_title, value=f"{row['views']:,} 回")
-
-            st.subheader("📈 再生回数比較グラフ")
-            st.bar_chart(data=df, x='title', y='views')
+            # 各動画ごとにVPHとエンゲージメント率を計算
+            for vid in st.session_state.video_ids:
+                video_data = df[df['video_id'] == vid].sort_values('timestamp')
+                if not video_data.empty:
+                    latest = video_data.iloc[-1]
+                    oldest = video_data.iloc[0]
+                    
+                    clean_title = latest['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
+                    views = latest['views']
+                    likes = latest['likes']
+                    
+                    # エンゲージメント率（%）
+                    eng_rate = (likes / views * 100) if views > 0 else 0
+                    
+                    # VPH計算（時間差分）
+                    time_diff_hours = (latest['timestamp'] - oldest['timestamp']).total_seconds() / 3600
+                    if time_diff_hours > 0.05: # データ取得間隔が数分以上ある場合のみ計算
+                        vph = int((views - oldest['views']) / time_diff_hours)
+                    else:
+                        vph = 0 # データが1件のみ、または短時間すぎる場合は0
+                        
+                    stats_list.append({
+                        "タイトル": clean_title,
+                        "VPH (熱狂度)": vph,
+                        "ENG率 (%)": round(eng_rate, 2),
+                        "累計再生数": views
+                    })
+            
+            # データフレーム化してVPH（勢い）が高い順にソート
+            stats_df = pd.DataFrame(stats_list)
+            stats_df = stats_df.sort_values(by="VPH (熱狂度)", ascending=False).reset_index(drop=True)
+            
+            # ハイライト指標の表示（ランキング1位の覇権を強調）
+            st.subheader("👑 現在のトレンド覇権 (トップ3)")
+            cols = st.columns(3)
+            for i in range(min(3, len(stats_df))):
+                row = stats_df.iloc[i]
+                cols[i].metric(
+                    label=f"{i+1}位: {row['タイトル']}", 
+                    value=f"🔥 {row['VPH (熱狂度)']:,} VPH",
+                    delta=f"ENG率: {row['ENG率 (%)']}%"
+                )
+            
+            st.divider()
+            
+            # 詳細データのテーブル表示
+            st.subheader("📊 コンセプト別 分析データ一覧")
+            st.dataframe(
+                stats_df.style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}),
+                use_container_width=True
+            )
+            
+            # VPH比較グラフ
+            st.subheader("📈 リアルタイム勢い比較 (VPH)")
+            st.bar_chart(data=stats_df, x='タイトル', y='VPH (熱狂度)')
+            
         else:
-            st.info("左側の「最新データを取得する」ボタンを押してください。")
+            st.info("👈 左側の「最新トレンドデータを取得」ボタンを押してデータを蓄積してください。")
 except Exception as e:
-    st.info("左側の「最新データを取得する」ボタンを押して初期データを取得してください。")
+    st.error(f"データ処理エラー: {e}")
+finally:
+    conn.close()
