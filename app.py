@@ -64,13 +64,15 @@ try:
 
     if not df.empty:
         st.subheader(" 各楽曲の最新再生回数")
-        cols = st.columns(len(df))
-        for idx, row in df.iterrows():
-            with cols[idx]:
-                # タイトル表示を綺麗に整形
-                display_title = row['title'] if len(row['title']) <= 20 else row['title'][:20] + "..."
-                st.metric(label=display_title, value=f"{row['views']:,} 回")
-
+        
+    N_COLS = 3
+        for i in range(0, len(df), N_COLS):
+            batch = df.iloc[i:i + N_COLS]
+            cols = st.columns(N_COLS)
+            for idx, (_, row) in enumerate(batch.iterrows()):
+                clean_title = row['title'].replace(" '", "").replace("'", "")
+                cols[idx].metric(label=clean_title, value=f"{row['views']:,} 回")
+                
         st.subheader("再生回数比較グラフ")
         st.bar_chart(data=df, x='title', y='views')
     else:
