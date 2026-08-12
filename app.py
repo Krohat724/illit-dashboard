@@ -75,7 +75,7 @@ try:
                 
     st.subheader("再生回数比較グラフ")
     st.bar_chart(data=df, x='title', y='views')
- else:
+    else:
     st.info("左上の「最新データを取得する」ボタンを押してください。")
 except Exception as e:
     st.info("左上の「最新データを取得する」ボタンを押して初期データを取得してください。")
