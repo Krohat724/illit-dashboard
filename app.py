@@ -66,7 +66,7 @@ try:
         st.subheader(" 各楽曲の最新再生回数")
         
     N_COLS = 3
-        for i in range(0, len(df), N_COLS):
+    for i in range(0, len(df), N_COLS):
             batch = df.iloc[i:i + N_COLS]
             cols = st.columns(N_COLS)
             for idx, (_, row) in enumerate(batch.iterrows()):
