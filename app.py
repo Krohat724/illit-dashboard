@@ -60,7 +60,7 @@ if st.sidebar.button("🗑️ リストを初期状態に戻す"):
     st.session_state.video_ids = DEFAULT_IDS.copy()
     st.sidebar.info("初期状態に戻しました。")
 
-st.sidebar.hr()
+st.sidebar.divider()
 
 # 2. データ取得ボタン
 if st.sidebar.button("🔄 最新データを取得する"):
