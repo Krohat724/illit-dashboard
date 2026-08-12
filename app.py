@@ -23,7 +23,7 @@ DEFAULT_IDS = [
     "-01oDwXKSuE",  # Sunday Morning
     "x_RYZsOfpKY",  # NOT CUTE ANYMORE
     "HeqsjDF7Lw0",  # 時よ止まれ（Toki Yo Tomare）
-    "xRU1XXHIpIc",  # bomb
+    "xRU1XXHIpIc",  # little monstetr
     "wpokz1JhGl0",  # oops!
     "GkG60kISnfc",  # jellyous
     "negtrQu5mTA",  # 빌려온 고양이 (Do the Dance)
