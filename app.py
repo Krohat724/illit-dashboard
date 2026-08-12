@@ -6,7 +6,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="ILLIT MV Analysis Dashboard", layout="wide")
 
-st.title("🎵 ILLIT MV リアルタイム分析ダッシュボード")
+st.title(" ILLIT MV リアルタイム分析ダッシュボード")
 st.write("YouTube Data APIから取得した最新の再生数をリアルタイムで可視化します。")
 
 API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
