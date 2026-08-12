@@ -4,9 +4,9 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="K-POP MV Analysis Dashboard", layout="wide")
+st.set_page_config(page_title="ILLIT MV Analysis Dashboard", layout="wide")
 
-st.title("🎵 K-POP MV リアルタイム分析ダッシュボード")
+st.title("🎵 ILLIT MV リアルタイム分析ダッシュボード")
 st.write("YouTube Data APIから取得した最新の再生数をリアルタイムで可視化します。")
 
 API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
@@ -25,7 +25,7 @@ VIDEO_IDS = [
 ]
 
 # サイドバーでデータ取得
-if st.sidebar.button("🔄 最新データを取得する"):
+if st.sidebar.button(" 最新データを取得する"):
     ids_str = ",".join(VIDEO_IDS)
     url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
     response = requests.get(url)
@@ -65,7 +65,7 @@ try:
     conn.close()
 
     if not df.empty:
-        st.subheader("📊 各楽曲の最新再生回数")
+        st.subheader(" 各楽曲の最新再生回数")
         
         # 3個ごとに改行してカードを配置する処理
         N_COLS = 3
@@ -76,7 +76,7 @@ try:
                 clean_title = row['title'].replace(" '", "").replace("'", "")
                 cols[idx].metric(label=clean_title, value=f"{row['views']:,} 回")
 
-        st.subheader("📈 再生回数比較グラフ")
+        st.subheader(" 再生回数比較グラフ")
         st.bar_chart(data=df, x='title', y='views')
     else:
         st.info("左上の「最新データを取得する」ボタンを押してください。")
