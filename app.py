@@ -5,16 +5,17 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="K-POP Trend Dashboard", layout="wide")
+st.set_page_config(page_title="ILLIT Trend Dashboard", layout="wide")
 
-st.title("🎵 K-POP MV リアルタイム分析ダッシュボード")
+st.title("🎵 ILLIT MV リアルタイム分析ダッシュボード")
 st.write("YouTube Data APIから取得した最新の再生数をリアルタイムで可視化します。")
 
 API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
 VIDEO_IDS = [
-    "Vk5-c_v4gMU",  # ILLIT - Magnetic
+    "Vk5-c_v4gMU",  # Magnetic
     "tbDGl7jEazA",  # Cherish (My Love)
     "_Pk6xfju3l0"   # I Got Your back(Feat. JISOO, MOMOKA of HANA)
+    "
 ]
 
 # サイドバーでデータ取得
