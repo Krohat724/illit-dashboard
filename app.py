@@ -24,12 +24,12 @@ DEFAULT_IDS = [
     "x_RYZsOfpKY",  # NOT CUTE ANYMORE
     "HeqsjDF7Lw0",  # 時よ止まれ（Toki Yo Tomare）
     "xRU1XXHIpIc",  # bomb
-    “wpokz1JhGl0”,  # oops!
-    “GkG60kISnfc”,  # jellyous
-    “negtrQu5mTA”,  # 빌려온 고양이 (Do the Dance)
-    “qlgEadao-Sk”,  # Almond Chocolate
-    “-nEGVrzPaiU”,  # Tick-Tack
-    “UCmgGZbfjmk”,  # Lucky Girl Syndrome
+    "wpokz1JhGl0",  # oops!
+    "GkG60kISnfc",  # jellyous
+    "negtrQu5mTA",  # 빌려온 고양이 (Do the Dance)
+    "qlgEadao-Sk",  # Almond Chocolate
+    "-nEGVrzPaiU",  # Tick-Tack
+    "UCmgGZbfjmk",  # Lucky Girl Syndrome
 ]
 
 if "video_ids" not in st.session_state:
