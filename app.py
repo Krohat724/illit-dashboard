@@ -61,8 +61,8 @@ try:
     '''
     df = pd.read_sql_query(query, conn)
     conn.close()
-
-    if not df.empty:
+    
+if not df.empty:
         st.subheader(" 各楽曲の最新再生回数")
         
     N_COLS = 3
@@ -75,7 +75,6 @@ try:
                 
     st.subheader("再生回数比較グラフ")
     st.bar_chart(data=df, x='title', y='views')
-    else:
-    st.info("左上の「最新データを取得する」ボタンを押してください。")
-except Exception as e:
+else:
+    st.info("左上の「最新データを取得する」ボタンを押してください。")except Exception as e:
     st.info("左上の「最新データを取得する」ボタンを押して初期データを取得してください。")
