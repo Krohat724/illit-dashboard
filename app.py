@@ -73,8 +73,8 @@ try:
                 clean_title = row['title'].replace(" '", "").replace("'", "")
                 cols[idx].metric(label=clean_title, value=f"{row['views']:,} 回")
                 
-        st.subheader("再生回数比較グラフ")
-        st.bar_chart(data=df, x='title', y='views')
+    st.subheader("再生回数比較グラフ")
+    st.bar_chart(data=df, x='title', y='views')
     else:
         st.info("左上の「最新データを取得する」ボタンを押してください。")
 except Exception as e:
