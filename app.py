@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("🎵 ILLIT MV トレンド覇権ダッシュボード (MVP)")
+st.title("🔥 K-POP トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標定義:** `VPH` (直近1時間の再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
@@ -24,7 +24,7 @@ supabase_headers = {
 }
 
 DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング",
+    "Vk5-c_v4gMU": "イージーリスニング"
 }
 
 CONCEPT_KEYWORDS = {
@@ -72,17 +72,46 @@ def auto_detect_concept(video_id):
         pass
     return "その他"
 
+# 🔥 新機能: データ取得とSupabase保存を全自動で行うエンジン
+def fetch_and_save_data(video_dict):
+    if not video_dict: return 0
+    ids_str = ",".join(video_dict.keys())
+    url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
+    res = requests.get(url).json()
+    success_count = 0
+    if "items" in res:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        for item in res["items"]:
+            payload = {
+                "timestamp": now,
+                "video_id": item["id"],
+                "title": item["snippet"]["title"],
+                "views": int(item["statistics"].get('viewCount', 0)),
+                "likes": int(item["statistics"].get('likeCount', 0)),
+                "comments": 0
+            }
+            post_res = requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
+            if post_res.status_code in [200, 201]:
+                success_count += 1
+            else:
+                st.error(f"DB保存エラー: {post_res.text}") # エラーがあれば画面に出す
+    return success_count
+
+
 # サイドバー
 st.sidebar.header("⚙️ 監視対象の追加")
 new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://www.youtube.com/watch?v=...")
+
 if st.sidebar.button("⚡️ URLから追加"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in st.session_state.video_concepts:
-            with st.sidebar.status("🤖 解析中..."):
+            with st.sidebar.status("🤖 解析とデータ取得中..."):
                 detected = auto_detect_concept(vid)
-            st.session_state.video_concepts[vid] = detected
-            st.sidebar.success(f"追加完了: 【{detected}】")
+                st.session_state.video_concepts[vid] = detected
+                # 🔥 追加した瞬間に自動でデータを取得しDBに保存する
+                fetch_and_save_data({vid: detected})
+            st.rerun() # 処理が終わったら強制リロードして即グラフを出す
         else:
             st.sidebar.warning("既に存在します。")
     else:
@@ -94,41 +123,26 @@ if st.sidebar.button("🗑️ リセット"):
 
 st.sidebar.divider()
 
-if st.sidebar.button("🔄 今すぐデータ取得"):
-    if st.session_state.video_concepts:
-        ids_str = ",".join(st.session_state.video_concepts.keys())
-        url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
-        res = requests.get(url).json()
-        if "items" in res:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            success_count = 0
-            for item in res["items"]:
-                payload = {
-                    "timestamp": now,
-                    "video_id": item["id"],
-                    "title": item["snippet"]["title"],
-                    "views": int(item["statistics"].get('viewCount', 0)),
-                    "likes": int(item["statistics"].get('likeCount', 0)),
-                    "comments": 0
-                }
-                post_res = requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
-                if post_res.status_code in [200, 201]:
-                    success_count += 1
-                else:
-                    st.sidebar.error(f"保存失敗 ({post_res.status_code}): {post_res.text}")
-            
-            if success_count > 0:
-                st.sidebar.success(f"Supabaseに{success_count}件のデータを保存しました！")
-                st.rerun()
+if st.sidebar.button("🔄 手動で最新データ取得"):
+    with st.spinner("最新データを取得中..."):
+        cnt = fetch_and_save_data(st.session_state.video_concepts)
+    if cnt > 0:
+        st.rerun()
 
-# データ可視化ロジック
+# メイン画面のデータ可視化ロジック
 try:
     video_ids = list(st.session_state.video_concepts.keys())
     if video_ids:
         # Supabaseからデータ取得
         res = requests.get(f"{SUPABASE_URL}/rest/v1/multi_video_stats?select=*", headers=supabase_headers)
         
-        if res.status_code == 200 and len(res.json()) > 0:
+        # 🔥 もしDBが空っぽなら、勝手に初期データを取得してリロードする
+        if res.status_code == 200 and len(res.json()) == 0:
+            with st.spinner("🚀 初回データベースを自動構築中... (数秒お待ちください)"):
+                fetch_and_save_data(st.session_state.video_concepts)
+                st.rerun()
+                
+        elif res.status_code == 200 and len(res.json()) > 0:
             df = pd.DataFrame(res.json())
             df = df[df['video_id'].isin(video_ids)]
             
@@ -178,7 +192,7 @@ try:
                         ).properties(height=300)
                         st.altair_chart(pie, use_container_width=True)
                     else:
-                        st.info("※データ更新を複数回実行すると円グラフが表示されます。")
+                        st.info("※手動で最新データを再取得（更新）すると円グラフが表示されます。")
                 
                 st.divider()
                 
@@ -193,14 +207,13 @@ try:
                     new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
                     if new_c != curr_c:
                         st.session_state.video_concepts[vid] = new_c
+                        # 変更があったら即時反映！
                         st.rerun()
                 
                 st.divider()
                 st.subheader("📊 詳細データ一覧")
                 st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
-            else:
-                st.info("👈 左側の「今すぐデータ取得」を押してデータを初期生成してください。")
         else:
-            st.info("👈 データベースが空です。左側の「今すぐデータ取得」を押してください。")
+             st.error(f"データベースの読み込みに失敗しました: エラーコード {res.status_code}")
 except Exception as e:
     st.error(f"エラー: {e}")
