@@ -14,6 +14,37 @@ st.divider()
 
 API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
 
+# --- ここから追加：自動判別エンジン ---
+CONCEPT_KEYWORDS = {
+    "イージーリスニング": ["easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング"],
+    "ティーンクラッシュ": ["teen crush", "ティーンクラッシュ", "teen", "rebel", "woke up"],
+    "ガールクラッシュ": ["girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "aespa", "baddie"],
+    "ハイティーン": ["high teen", "ハイティーン", "school", "prom", "cheerleader", "highschool"],
+    "ダーク・ホラー": ["dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare"],
+    "ストリート・ヒップホップ": ["street", "hiphop", "hip hop", "ストリート", "ヒップホップ", "rap", "swag"],
+    "ファンタジー": ["fantasy", "ファンタジー", "magic", "fairytale", "fairy"],
+    "清純・青春・キュート": ["pure", "cute", "innocent", "youth", "清純", "青春", "キュート", "かわいい", "kawaii"],
+    "Y2K・レトロ": ["y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "vintage"],
+    "ディスコ・ファンク": ["disco", "funk", "ディスコ", "ファンク", "retro pop", "groove"],
+    "SF・ファンタジー": ["sf", "sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space"],
+    "セクシー": ["sexy", "セクシー", "mature", "alluring", "sensual"],
+    "エレガント・ロイヤル": ["elegant", "royal", "エレガント", "ロイヤル", "queen", "princess", "luxury", "ive"]
+}
+
+def auto_detect_concept(video_id):
+    url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
+    response = requests.get(url).json()
+    if "items" in response and len(response["items"]) > 0:
+        snippet = response["items"][0]["snippet"]
+        text_to_search = (snippet.get("title", "") + " " + snippet.get("description", "") + " " + " ".join(snippet.get("tags", []))).lower()
+        
+        for concept, keywords in CONCEPT_KEYWORDS.items():
+            for kw in keywords:
+                if kw in text_to_search:
+                    return concept
+    return "その他"
+# --- 追加ここまで ---
+
 # 【進化ポイント】動画IDと「コンセプト」を紐付ける辞書型に変更
 DEFAULT_CONCEPTS = {
     "Vk5-c_v4gMU": "イージーリスニング",
@@ -35,20 +66,14 @@ def extract_video_id(url_or_id):
 st.sidebar.header("⚙️ トレンド監視対象の追加")
 new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://www.youtube.com/watch?v=...")
 
-# 【進化ポイント】URL追加時にコンセプトを選択させる
-selected_concept = st.sidebar.selectbox("🏷 コンセプトタグを選択", [
-    "イージーリスニング", "ティーンクラッシュ", "ガールクラッシュ", "ハイティーン", 
-    "ダーク・ホラー", "ストリート・ヒップホップ", "ファンタジー", 
-    "清純・青春・キュート", "Y2K・レトロ", "ディスコ・ファンク", 
-    "SF・ファンタジー", "セクシー", "エレガント・ロイヤル", "その他"
-])
-
-if st.sidebar.button("分析対象に追加"):
+if st.sidebar.button("⚡️ URLから自動解析して追加"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in st.session_state.video_concepts:
-            st.session_state.video_concepts[vid] = selected_concept
-            st.sidebar.success(f"追加完了 (ID: {vid} / {selected_concept})")
+            with st.sidebar.status("🤖 動画のメタデータを解析中..."):
+                detected_concept = auto_detect_concept(vid)
+            st.session_state.video_concepts[vid] = detected_concept
+            st.sidebar.success(f"追加完了！自動判定: 【{detected_concept}】")
         else:
             st.sidebar.warning("既に監視リストに存在します。")
     else:
