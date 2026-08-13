@@ -57,24 +57,6 @@ CONCEPT_KEYWORDS = {
         "ゲームボーイ", "デニム", "カーゴパンツ", "ルーズソックス", "ゲーセン", "ドット絵", "ウォークマン"
     ],
     
-    "SF・サイバーパンク・ハイパーポップ": [
-        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "robot",  
-        "dystopia", "portal", "multiverse", "avatar", "hyperpop", "futuristic", "metallic", 
-        "industrial", "glitch", "distortion", "heavy synth", "neon", "hologram", 
-        "laser", "spaceship", "galaxy", "cosmos", "cyber", "matrix", "quantum", "cyborg", "tech", 
-        "digital", "code", "synthcore", "electronic", "dubstep", "autotune", 
-        "hardstyle", "noise", "future bass", "cgi", "mechanical", "exoskeleton", "clone", 
-        "teleport", "dimension", "mecha", "nanotech", "time travel",
-        "우주", "가상", "미래", "가상현실", "사이버", "인공지능", "로봇", "아바타", "미래도시", 
-        "사이버펑크", "네온", "메타버스", "광선", "글리치", "하이퍼팝", "홀로그램", "디스토피아", 
-        "우주선", "은하", "광속", "차원", "sf영화", "외계인", "기계", "크롬", "차원이동", "양자", 
-        "오토튠", "컴퓨터", "실험실",
-        "サイバーパンク", "宇宙", "近未来", "仮想空間", "ディストピア", "アバター", "異次元", 
-        "メタリック", "インダストリアル", "グリッチ", "歪み", "ハイパーポップ", "ホログラム", 
-        "クローム", "レーザー", "ロボット",  "未来都市", "電脳", "メタバース", "宇宙船",  
-        "異空間", "ワープ", "タイムトラベル", "超次元", "電子音", "重低音", "機械仕掛け", "サイボーグ"
-    ],
-    
     "ガールクラッシュ・ヒップホップ・トラップ": [
         "girl crush", "badass", "confidence", "queen", "power", "fierce", "bold", "boss", "warrior", 
         "leather", "biker", "trap", "hard brass", "heavy bass", "hiphop", "rap", "powerful", 
