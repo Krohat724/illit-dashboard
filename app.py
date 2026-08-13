@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("🔥 K-POP トレンド覇権ダッシュボード (MVP)")
+st.title("ILLIT MV トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標定義:** `VPH` (直近1時間の再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
