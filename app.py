@@ -1,8 +1,5 @@
 
 import streamlit as st
-st.write(f"読み込んでいるURL: {st.secrets.get('SUPABASE_URL')}")
-st.write(f"読み込んでいるKEY: {st.secrets.get('SUPABASE_KEY')[:10]}...")
-import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
