@@ -24,9 +24,7 @@ supabase_headers = {
     "Prefer": "return=representation"
 }
 
-# ----------------------------------------------------
 # 📚 超強化版 K-POP コンセプト判定辞書
-# ----------------------------------------------------
 CONCEPT_KEYWORDS = {
     "イージーリスニング": [
         "easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", 
@@ -73,12 +71,10 @@ CONCEPT_KEYWORDS = {
     ]
 }
 
-# 初期のデフォルト動画データ
 DEFAULT_DATABASE = {
     "Vk5-c_v4gMU": {"concept": "イージーリスニング", "title": "Magnetic"}
 }
 
-# URLから動画IDを抽出
 def extract_video_id(url_or_id):
     url_or_id = url_or_id.strip()
     if len(url_or_id) == 11 and not ("/" in url_or_id or "." in url_or_id):
@@ -86,11 +82,7 @@ def extract_video_id(url_or_id):
     match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url_or_id)
     return match.group(1) if match else None
 
-# ----------------------------------------------------
-# 💾 Supabase (データベース) との連動ロジック
-# ----------------------------------------------------
 def load_concepts_from_db():
-    """Supabaseから登録済み動画とコンセプトの一覧を取得"""
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_concepts?select=*"
         res = requests.get(url, headers=supabase_headers)
@@ -98,16 +90,17 @@ def load_concepts_from_db():
             data = res.json()
             if data:
                 return {row['video_id']: {"concept": row['concept'], "title": row.get('title', '')} for row in data}
+        else:
+            st.warning(f"⚠️ DB読み込み警告 ({res.status_code}): {res.text}")
     except Exception as e:
         st.error(f"DB読み込みエラー: {e}")
     
-    # DBが空の場合はデフォルト値を保存して返す
+    # 初回デフォルト保存
     for vid, info in DEFAULT_DATABASE.items():
         save_concept_to_db(vid, info['concept'], info['title'])
     return DEFAULT_DATABASE.copy()
 
 def save_concept_to_db(video_id, concept, title=""):
-    """Supabaseに動画とコンセプトを保存/更新 (UPSERT)"""
     try:
         payload = {
             "video_id": video_id,
@@ -118,16 +111,17 @@ def save_concept_to_db(video_id, concept, title=""):
         headers = supabase_headers.copy()
         headers["Prefer"] = "resolution=merge-duplicates"
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_concepts"
-        requests.post(url, headers=headers, json=payload)
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code not in [200, 201]:
+            st.error(f"❌ コンセプト保存失敗 ({res.status_code}): {res.text}")
+            return False
+        return True
     except Exception as e:
-        print(f"DB保存エラー: {e}")
+        st.error(f"❌ コンセプト保存例外エラー: {e}")
+        return False
 
-# ----------------------------------------------------
-# 🔍 辞書マッチング自動判定エンジン (超強化版)
-# ----------------------------------------------------
 def auto_detect_concept_dict(video_id):
     try:
-        # snippet（タイトル、説明欄、タグ）を取得
         url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
         res = requests.get(url).json()
         
@@ -137,32 +131,29 @@ def auto_detect_concept_dict(video_id):
             description = snippet.get("description", "").lower()
             tags = [t.lower() for t in snippet.get("tags", [])]
             
-            # 全文テキスト結合
-            full_text = f"{title} {description} {' '.join(tags)}"
-            
-            # 各コンセプトのスコア計算
             scores = {}
             for concept, keywords in CONCEPT_KEYWORDS.items():
                 score = 0
                 for kw in keywords:
                     kw_lower = kw.lower()
                     if kw_lower in title:
-                        score += 5  # タイトルに含まれていれば高得点
+                        score += 5
                     if kw_lower in tags:
-                        score += 3  # タグに含まれていれば中得点
+                        score += 3
                     if kw_lower in description:
-                        score += 1  # 概要欄に含まれていれば加点
+                        score += 1
                 if score > 0:
                     scores[concept] = score
             
-            # 最もスコアが高いコンセプトを選択
             if scores:
                 best_concept = max(scores, key=scores.get)
                 return best_concept, snippet.get("title", "")
             
             return "その他", snippet.get("title", "")
+        else:
+            st.error("YouTube APIから動画情報を取得できませんでした（URLまたはキーを確認）")
     except Exception as e:
-        print(f"解析エラー: {e}")
+        st.error(f"解析エラー: {e}")
         
     return "その他", ""
 
@@ -186,13 +177,12 @@ def fetch_and_save_data(video_ids):
             post_res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
             if post_res.status_code in [200, 201]:
                 success_count += 1
+            else:
+                st.error(f"❌ 統計データ保存失敗 ({post_res.status_code}): {post_res.text}")
     return success_count
 
 
-# ----------------------------------------------------
-# 📱 画面描画ロジック
-# ----------------------------------------------------
-# DBから永続化データを取得
+# 📱 画面描画
 db_concepts = load_concepts_from_db()
 
 # サイドバー
@@ -205,11 +195,11 @@ if st.sidebar.button("⚡️ URLから追加"):
         if vid not in db_concepts:
             with st.sidebar.status("🔍 辞書検索でジャンルを解析中..."):
                 detected_concept, v_title = auto_detect_concept_dict(vid)
-                # DBに永久保存！
-                save_concept_to_db(vid, detected_concept, v_title)
-                fetch_and_save_data([vid])
-            st.sidebar.success(f"追加完了: 【{detected_concept}】")
-            st.rerun()
+                ok = save_concept_to_db(vid, detected_concept, v_title)
+                if ok:
+                    fetch_and_save_data([vid])
+                    st.sidebar.success(f"追加完了: 【{detected_concept}】")
+                    st.rerun()
         else:
             st.sidebar.warning("既に存在します。")
     else:
@@ -223,7 +213,7 @@ if st.sidebar.button("🔄 手動で最新データ取得"):
     if cnt > 0:
         st.rerun()
 
-# メイン画面のデータ可視化
+# メイン画面
 try:
     video_ids = list(db_concepts.keys())
     if video_ids:
@@ -299,7 +289,6 @@ try:
                     idx = all_options.index(curr_c) if curr_c in all_options else len(all_options)-1
                     new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
                     
-                    # ユーザーが変更したら即座にSupabaseに更新保存！
                     if new_c != curr_c:
                         save_concept_to_db(vid, new_c, v_title)
                         st.rerun()
@@ -308,6 +297,6 @@ try:
                 st.subheader("📊 詳細データ一覧")
                 st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
         else:
-             st.error(f"データベースエラー: {res.status_code}")
+             st.error(f"データベース取得エラー ({res.status_code}): {res.text}")
 except Exception as e:
     st.error(f"エラー: {e}")
