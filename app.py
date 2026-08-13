@@ -56,6 +56,22 @@ CONCEPT_KEYWORDS = {
         "ミレニアム", "フィルム", "ポラロイド", "懐かしい", "平成", "vhs", "ビデオテープ", 
         "ゲームボーイ", "デニム", "カーゴパンツ", "ルーズソックス", "ゲーセン", "ドット絵", "ウォークマン"
     ],
+
+
+    "SF・サイバーパンク・ハイパーポップ": [
+        "sci-fi", "cyberpunk", "alien", "metaverse", "virtual reality", "robot", "android", "dystopia", 
+        "portal", "multiverse", "avatar", "hyperpop", "futuristic", "metallic", "glitch", 
+        "hologram", "spaceship", "galaxy", "cosmos", "cyber", "matrix", "quantum", "cyborg", 
+        "synthcore", "hardstyle", "exoskeleton", "clone", "supernova", "teleport",
+        "dimension", "mecha", "nanotech", "time travel",
+        "가상현실", "사이버", "인공지능", "로봇", "아바타", "미래도시", "사이버펑크", 
+        "메타버스", "글리치", "하이퍼팝", "홀로그램", "디스토피아", "우주선", "은하", "광속", 
+        "차원", "외계인", "기계", "크롬", "차원이동", "양자", "오토튠", "실험실",
+        "サイバーパンク", "近未来", "仮想空間", "ディストピア", "アバター", "異次元", 
+        "メタリック", "インダストリアル", "グリッチ", "歪み", "ハイパーポップ", "ホログラム", "クローム", 
+        "ロボット", "人工知能", "未来都市", "電脳", "メタバース", "宇宙船", "異空間", 
+        "ワープ", "タイムトラベル", "超次元", "機械仕掛け", "サイボーグ"
+    ],
     
     "ガールクラッシュ・ヒップホップ・トラップ": [
         "girl crush", "badass", "confidence", "queen", "power", "fierce", "bold", "boss", "warrior", 
