@@ -14,6 +14,25 @@ st.divider()
 
 API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
 
+# 【進化ポイント】動画IDと「コンセプト」を紐付ける辞書型に変更
+DEFAULT_CONCEPTS = {
+    "Vk5-c_v4gMU": "イージーリスニング",
+    "tbDGl7jEazA":  # Cherish (My Love)
+    "_Pk6xfju3l0":  # I Got Your back(Feat. JISOO, MOMOKA of HANA)
+    "bMhDJ0S0OBA":  # It's me
+    "9nEp9eeGaJk":  # NOT ME
+    "-01oDwXKSuE":  # Sunday Morning
+    "x_RYZsOfpKY":  # NOT CUTE ANYMORE
+    "HeqsjDF7Lw0":  # 時よ止まれ（Toki Yo Tomare）
+    "xRU1XXHIpIc":  # bomb
+    "wpokz1JhGl0":  # oops!
+    "GkG60kISnfc":  # jellyous
+    "negtrQu5mTA":  # 빌려온 고양이 (Do the Dance)
+    "qlgEadao-Sk":  # Almond Chocolate
+    "-nEGVrzPaiU":  # Tick-Tack
+    "UCmgGZbfjmk":  # Lucky Girl Syndrome
+}
+
 # --- ここから追加：自動判別エンジン ---
 CONCEPT_KEYWORDS = {
     "イージーリスニング": ["easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", "magnetic"],
