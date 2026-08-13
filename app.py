@@ -47,7 +47,7 @@ def auto_detect_concept(video_id):
 
 # 【進化ポイント】動画IDと「コンセプト」を紐付ける辞書型に変更
 DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング",
+    
 }
 
 if "video_concepts" not in st.session_state:
