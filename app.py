@@ -24,55 +24,97 @@ supabase_headers = {
     "Prefer": "return=representation"
 }
 
-# 📚 超強化版 K-POP コンセプト判定辞書
+# ----------------------------------------------------
+# 📚 本格楽曲コンセプト解析辞書 (グループ名完全排除版)
+# ----------------------------------------------------
 CONCEPT_KEYWORDS = {
-    "イージーリスニング": [
-        "easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", 
-        "magnetic", "cherish", "tick-tack",  "iykyk", "lofi", "soft"
+    "イージーリスニング・チル": [
+        # 音楽・サウンド
+        "easy listening", "chill", "lo-fi", "lofi", "acoustic", "soft pop", "mellow", "gentle", "minimal", 
+        "ambient", "cozy", "relaxing", "bpm", "piano", "acoustic guitar", "ヒーリング", "チル", 
+        "アコースティック", "メロウ", "アンビエント", "癒やし", "穏やか", "スローテンポ", "잔잔한", "편안한", "힐링",
+        # テーマ・ビジュアル
+        "daily", "bedroom", "morning", "coffee", "walk", "natural", "日常", "散歩", "ベッドルーム", "ナチュラル"
     ],
-    "Y2K・レトロ": [
-        "y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "뉴진스", 
-        "hype boy", "ditto", "omg", "eta", "super shy", "how sweet", "bubble gum", "vintage"
+    "Y2K・レトロアナログ": [
+        # 音楽・サウンド
+        "y2k", "retro", "nostalgia", "90s", "00s", "80s", "synthwave", "city pop", "eurodance", "uk garage", 
+        "jersey club", "2-step", "cassette", "vinyl", "レトロ", "シティポップ", "ユーロダンス", "ジャージークラブ", 
+        "カセット", "レコード", "추억", "복고",
+        # テーマ・ビジュアル
+        "vintage", "analog", "camcorder", "low resolution", "cd player", "flip phone", "8mm",
+        "ビンテージ", "アナログ", "ガラケー", "エモい", "レトロフューチャー", "画質"
     ],
-    "SF・ファンタジー": [
-        "sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space", "supernova", 
-        "aespa", "エスパ", "에스파", "armageddon", "drama", "savage", "next level", "hyper"
+    "SF・サイバーパンク": [
+        # 音楽・サウンド
+        "hyperpop", "futuristic", "metallic", "industrial", "glitch", "distortion", "heavy synth", 
+        "ハイパーポップ", "メタリック", "インダストリアル", "グリッチ", "歪み",
+        # テーマ・ビジュアル
+        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "ai", "robot", "android", 
+        "dystopia", "portal", "multiverse", "avatar", "サイバーパンク", "宇宙", "近未来", "仮想空間", 
+        "ディストピア", "アバター", "異次元", "SF", "우주", "가상"
     ],
-    "ガールクラッシュ": [
-        "girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "블랙핑크", 
-        "babymonster", "sheesh", "drip", "baddie", "ive", "아이브", "xg", "woke up", "kepi"
+    "ガールクラッシュ・ヒップホップ": [
+        # 音楽・サウンド
+        "trap", "hard brass", "heavy bass", "hiphop", "rap", "powerful", "aggressive", "boombap", 
+        "トラップ", "重低音", "爆音", "ブラス", "ラップ", "パワフル", "ドリル",
+        # テーマ・ビジュアル
+        "girl crush", "badass", "confidence", "queen", "power", "fierce", "bold", "boss", "warrior", 
+        "leather", "biker", "ガールクラッシュ", "自信", "強さ", "ボス", "威厳", "革ジャン", "バイカー", "自立", "걸크러시", "당당"
     ],
-    "ティーンクラッシュ": [
-        "teen crush", "ティーンクラッシュ", "rebel", "itzy", "있지", "not shy", "wannabe", 
-        "sneakers", "untouchable", "highschool", "teen"
+    "ティーンクラッシュ・ロック": [
+        # 音楽・サウンド
+        "pop punk", "rock", "electric guitar", "punk", "rebellious", "energetic", "guitar riff", 
+        "ポップパンク", "ロック", "エレキギター", "パンク", "ギターリフ",
+        # テーマ・ビジュアル
+        "teen crush", "rebel", "skater", "gen z", "attitude", "quirky", "rule breaker", 
+        "ティーンクラッシュ", "反抗", "スケーター", "Z世代", "個性", "自由奔放", "破天荒", "반항"
     ],
     "エレガント・ロイヤル": [
-        "elegant", "royal", "エレガント", "ロイヤル", "queen", "princess", "luxury", 
-        "love dive", "after like", "i am", "heya", "accent"
+        # 音楽・サウンド
+        "orchestral", "waltz", "strings", "classical", "dramatic pop", "violin", "harpsichord", 
+        "オケ", "ヴァイオリン", "ワルツ", "ストリングス", "クラシカル", "クラシック",
+        # テーマ・ビジュアル
+        "elegant", "royal", "luxury", "ballroom", "crown", "princess", "castle", "chandelier", 
+        "jewels", "velvet", "ティアラ", "エレガント", "ロイヤル", "ゴージャス", "貴族", "ドレス", 
+        "シャンデリア", "宝石", "華麗", "王族", "우아한", "왕실"
     ],
-    "ハイティーン": [
-        "high teen", "ハイティーン", "school", "prom", "cheerleader", "stayc", "스테이씨", 
-        "asap", "teddy bear", "bubble"
+    "ハイティーン・スクール": [
+        # 音楽・サウンド
+        "bright pop", "dance pop", "upbeat", "cheerful", "爽快", "ポップ", "明るい",
+        # テーマ・ビジュアル
+        "high teen", "school", "uniform", "locker", "prom", "cheerleader", "campus", "student", 
+        "youth", "crush", "ハイティーン", "制服", "校舎", "ロッカー", "プロム", "チアリーダー", 
+        "青春", "初恋", "学園", "학원물", "하이틴"
     ],
-    "ダーク・ホラー": [
-        "dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare", 
-        "dreamcatcher", "voodoo", "monster", "vampire"
+    "ダーク・ゴシック・ホラー": [
+        # 音楽・サウンド
+        "minor key", "gothic", "heavy metal", "dark pop", "eerie", "suspenseful", "organ", 
+        "ダークポップ", "重厚", "不穏", "ゴシック", "パイプオルガン",
+        # テーマ・ビジュアル
+        "dark", "horror", "vampire", "witch", "curse", "nightmare", "mystery", "shadow", 
+        "cemetery", "ritual", "blood", "poison", "ホラー", "悪夢", "吸血鬼", "魔女", "呪い", 
+        "儀式", "墓地", "ミステリー", "死", "잔혹", "기괴", "어둠"
     ],
-    "ストリート・ヒップホップ": [
-        "street", "hiphop", "hip hop", "ストリート", "ヒップホップ", "rap", "swag", 
-        "stray kids", "bts", "ateez", "dance practice", "choreo"
-    ],
-    "清純・青春・キュート": [
-        "pure", "cute", "innocent", "youth", "清純", "青春", "キュート", "kawaii", 
-        "twice", "tws", "トゥアス", "plot twist", "first meeting"
+    "清純・青春・清涼": [
+        # 音楽・サウンド
+        "bubblegum pop", "cute synth", "sweet", "bright", "清涼", "さわやか", "スウィート",
+        # テーマ・ビジュアル
+        "pure", "innocent", "fresh", "cute", "summer", "breeze", "blue sky", "pastel", "flower", 
+        "smile", "爽やか", "夏空", "パステル", "初々しい", "清涼感", "清純", "妖精", "청량", "순수"
     ],
     "ディスコ・ファンク": [
-        "disco", "funk", "ディスコ", "ファンク", "retro pop", "groove", "dynamite", "butter"
+        # 音楽・サウンド
+        "disco", "funk", "groovy", "brass", "slap bass", "retro dance", "70s", "groove", 
+        "ディスコ", "ファンク", "スラップベース", "ブラス", "グルーヴ", "ディスコビート",
+        # テーマ・ビジュアル
+        "roller skate", "disco ball", "party", "neon", "mirror ball", "dance floor", 
+        "ローラースケート", "ミラーボール", "ネオン", "ナイトライフ", "ダンスフロア"
     ]
 }
 
 DEFAULT_DATABASE = {
-    "Vk5-c_v4gMU": {"concept": "イージーリスニング", "title": "Magnetic"}
+    "Vk5-c_v4gMU": {"concept": "イージーリスニング・チル", "title": "Magnetic"}
 }
 
 def extract_video_id(url_or_id):
@@ -95,7 +137,6 @@ def load_concepts_from_db():
     except Exception as e:
         st.error(f"DB読み込みエラー: {e}")
     
-    # 初回デフォルト保存
     for vid, info in DEFAULT_DATABASE.items():
         save_concept_to_db(vid, info['concept'], info['title'])
     return DEFAULT_DATABASE.copy()
@@ -120,6 +161,9 @@ def save_concept_to_db(video_id, concept, title=""):
         st.error(f"❌ コンセプト保存例外エラー: {e}")
         return False
 
+# ----------------------------------------------------
+# 🔍 厳密な属性加重スコアリングエンジン
+# ----------------------------------------------------
 def auto_detect_concept_dict(video_id):
     try:
         url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
@@ -136,15 +180,19 @@ def auto_detect_concept_dict(video_id):
                 score = 0
                 for kw in keywords:
                     kw_lower = kw.lower()
+                    # タイトルに含まれている場合は最重視 (5点)
                     if kw_lower in title:
                         score += 5
-                    if kw_lower in tags:
+                    # 公式タグに含まれている場合 (3点)
+                    if any(kw_lower in tag for tag in tags):
                         score += 3
+                    # 概要欄に含まれている場合 (1点)
                     if kw_lower in description:
                         score += 1
                 if score > 0:
                     scores[concept] = score
             
+            # 最高スコアのコンセプトを採用
             if scores:
                 best_concept = max(scores, key=scores.get)
                 return best_concept, snippet.get("title", "")
@@ -193,7 +241,7 @@ if st.sidebar.button("⚡️ URLから追加"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in db_concepts:
-            with st.sidebar.status("🔍 辞書検索でジャンルを解析中..."):
+            with st.sidebar.status("🔍 属性・音楽性キーワードで解析中..."):
                 detected_concept, v_title = auto_detect_concept_dict(vid)
                 ok = save_concept_to_db(vid, detected_concept, v_title)
                 if ok:
@@ -237,7 +285,7 @@ try:
                     v_data = df[df['video_id'] == vid].sort_values('timestamp')
                     if not v_data.empty:
                         latest, oldest = v_data.iloc[-1], v_data.iloc[0]
-                        clean_title = latest['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
+                        clean_title = latest['title'].replace(" '", "").replace("'", "")
                         views, likes = latest['views'], latest['likes']
                         concept = db_concepts[vid]["concept"]
                         
