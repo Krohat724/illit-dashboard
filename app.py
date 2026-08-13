@@ -1,5 +1,4 @@
 import streamlit as st
-import sqlite3
 import requests
 import pandas as pd
 from datetime import datetime
@@ -9,14 +8,21 @@ import os
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("ILLIT MV トレンド覇権ダッシュボード (MVP)")
+st.title("ILLIT MV  トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標定義:** `VPH` (直近1時間の再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
-# APIキーの安全取得（Secrets優先、なければ直書き用フォールバック）
-API_KEY = st.secrets.get("YOUTUBE_API_KEY", os.environ.get("YOUTUBE_API_KEY", "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"))
+# 環境変数の取得
+API_KEY = st.secrets.get("YOUTUBE_API_KEY", os.environ.get("YOUTUBE_API_KEY"))
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
 
-# デフォルト動画と初期コンセプト
+supabase_headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
+
 DEFAULT_CONCEPTS = {
     "Vk5-c_v4gMU": "イージーリスニング"
 }
@@ -55,18 +61,13 @@ def auto_detect_concept(video_id):
             snippet = res["items"][0]["snippet"]
             title_lower = snippet.get("title", "").lower()
             tags_lower = [tag.lower() for tag in snippet.get("tags", [])]
-            
             scores = {concept: 0 for concept in CONCEPT_KEYWORDS.keys()}
             for concept, keywords in CONCEPT_KEYWORDS.items():
                 for kw in keywords:
-                    if kw in tags_lower:
-                        scores[concept] += 3
-                    if kw in title_lower:
-                        scores[concept] += 2
-                        
+                    if kw in tags_lower: scores[concept] += 3
+                    if kw in title_lower: scores[concept] += 2
             best = max(scores, key=scores.get)
-            if scores[best] > 0:
-                return best
+            if scores[best] > 0: return best
     except Exception:
         pass
     return "その他"
@@ -74,7 +75,6 @@ def auto_detect_concept(video_id):
 # サイドバー
 st.sidebar.header("⚙️ 監視対象の追加")
 new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://www.youtube.com/watch?v=...")
-
 if st.sidebar.button("⚡️ URLから追加"):
     vid = extract_video_id(new_input)
     if vid:
@@ -99,107 +99,101 @@ if st.sidebar.button("🔄 今すぐデータ取得"):
         ids_str = ",".join(st.session_state.video_concepts.keys())
         url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
         res = requests.get(url).json()
-
         if "items" in res:
-            conn = sqlite3.connect('youtube_stats.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS multi_video_stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT, video_id TEXT, title TEXT, views INTEGER, likes INTEGER, comments INTEGER
-                )
-            ''')
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             for item in res["items"]:
-                cursor.execute('''
-                    INSERT INTO multi_video_stats (timestamp, video_id, title, views, likes, comments)
-                    VALUES (?, ?, ?, ?, ?, 0)
-                ''', (now, item["id"], item["snippet"]["title"], int(item["statistics"].get('viewCount', 0)), int(item["statistics"].get('likeCount', 0))))
-            conn.commit()
-            conn.close()
-            st.sidebar.success("最新データを更新しました！")
+                payload = {
+                    "timestamp": now,
+                    "video_id": item["id"],
+                    "title": item["snippet"]["title"],
+                    "views": int(item["statistics"].get('viewCount', 0)),
+                    "likes": int(item["statistics"].get('likeCount', 0)),
+                    "comments": 0
+                }
+                requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
+            st.sidebar.success("Supabaseに最新データを保存しました！")
 
-# DB表示と集計
-conn = sqlite3.connect('youtube_stats.db')
+# データ可視化ロジック
 try:
     video_ids = list(st.session_state.video_concepts.keys())
     if video_ids:
-        placeholders = ','.join(['?'] * len(video_ids))
-        query = f"SELECT * FROM multi_video_stats WHERE video_id IN ({placeholders})"
-        df = pd.read_sql_query(query, conn, params=video_ids)
+        # Supabaseからデータ取得
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/multi_video_stats?select=*", headers=supabase_headers)
         
-        if not df.empty:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            stats_list = []
+        if res.status_code == 200 and len(res.json()) > 0:
+            df = pd.DataFrame(res.json())
+            # 監視対象の動画だけをフィルタリング
+            df = df[df['video_id'].isin(video_ids)]
             
-            for vid in video_ids:
-                v_data = df[df['video_id'] == vid].sort_values('timestamp')
-                if not v_data.empty:
-                    latest, oldest = v_data.iloc[-1], v_data.iloc[0]
-                    clean_title = latest['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
-                    views, likes = latest['views'], latest['likes']
-                    concept = st.session_state.video_concepts[vid]
-                    
-                    eng_rate = (likes / views * 100) if views > 0 else 0
-                    time_diff = (latest['timestamp'] - oldest['timestamp']).total_seconds() / 3600
-                    vph = int((views - oldest['views']) / time_diff) if time_diff > 0.05 else 0
-                        
-                    stats_list.append({
-                        "video_id": vid, "タイトル": clean_title, "コンセプト": concept,
-                        "VPH (熱狂度)": vph, "ENG率 (%)": round(eng_rate, 2), "累計再生数": views
-                    })
-            
-            stats_df = pd.DataFrame(stats_list).sort_values(by="VPH (熱狂度)", ascending=False).reset_index(drop=True)
-            
-            # 1. トップ3メトリクス
-            st.subheader("👑 トレンド覇権 (トップ3)")
-            cols = st.columns(3)
-            for i in range(min(3, len(stats_df))):
-                row = stats_df.iloc[i]
-                cols[i].metric(label=f"{i+1}位: {row['タイトル']}", value=f"🔥 {row['VPH (熱狂度)']:,} VPH", delta=f"{row['コンセプト']} / ENG: {row['ENG率 (%)']}%")
-            
-            st.divider()
-            
-            # 2. マクロトレンド
-            st.subheader("🧩 コンセプト別シェア (マクロトレンド)")
-            concept_df = stats_df.groupby('コンセプト')['VPH (熱狂度)'].sum().reset_index().sort_values(by='VPH (熱狂度)', ascending=False)
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.dataframe(concept_df.style.format({"VPH (熱狂度)": "{:,}"}), use_container_width=True)
-            with c2:
-                if concept_df['VPH (熱狂度)'].sum() > 0:
-                    pie = alt.Chart(concept_df).mark_arc().encode(
-                        theta=alt.Theta(field="VPH (熱狂度)", type="quantitative"),
-                        color=alt.Color(field="コンセプト", type="nominal"),
-                        tooltip=["コンセプト", "VPH (熱狂度)"]
-                    ).properties(height=300)
-                    st.altair_chart(pie, use_container_width=True)
-                else:
-                    st.info("※データ更新を複数回実行すると円グラフが表示されます。")
-            
-            st.divider()
-            
-            # 3. 手動チューニングUI
-            st.subheader("✏️ コンセプト修正 (手動チューニング)")
-            all_options = list(CONCEPT_KEYWORDS.keys()) + ["その他"]
-            for vid in video_ids:
-                curr_c = st.session_state.video_concepts[vid]
-                v_row = stats_df[stats_df['video_id'] == vid]
-                v_title = v_row['タイトル'].values[0] if not v_row.empty else vid
+            if not df.empty:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                stats_list = []
                 
-                idx = all_options.index(curr_c) if curr_c in all_options else len(all_options)-1
-                new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
-                if new_c != curr_c:
-                    st.session_state.video_concepts[vid] = new_c
-                    st.rerun()
-            
-            st.divider()
-            st.subheader("📊 詳細データ一覧")
-            st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
+                for vid in video_ids:
+                    v_data = df[df['video_id'] == vid].sort_values('timestamp')
+                    if not v_data.empty:
+                        latest, oldest = v_data.iloc[-1], v_data.iloc[0]
+                        clean_title = latest['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
+                        views, likes = latest['views'], latest['likes']
+                        concept = st.session_state.video_concepts[vid]
+                        
+                        eng_rate = (likes / views * 100) if views > 0 else 0
+                        time_diff = (latest['timestamp'] - oldest['timestamp']).total_seconds() / 3600
+                        vph = int((views - oldest['views']) / time_diff) if time_diff > 0.05 else 0
+                            
+                        stats_list.append({
+                            "video_id": vid, "タイトル": clean_title, "コンセプト": concept,
+                            "VPH (熱狂度)": vph, "ENG率 (%)": round(eng_rate, 2), "累計再生数": views
+                        })
+                
+                stats_df = pd.DataFrame(stats_list).sort_values(by="VPH (熱狂度)", ascending=False).reset_index(drop=True)
+                
+                st.subheader("👑 トレンド覇権 (トップ3)")
+                cols = st.columns(3)
+                for i in range(min(3, len(stats_df))):
+                    row = stats_df.iloc[i]
+                    cols[i].metric(label=f"{i+1}位: {row['タイトル']}", value=f"🔥 {row['VPH (熱狂度)']:,} VPH", delta=f"{row['コンセプト']} / ENG: {row['ENG率 (%)']}%")
+                
+                st.divider()
+                
+                st.subheader("🧩 コンセプト別シェア (マクロトレンド)")
+                concept_df = stats_df.groupby('コンセプト')['VPH (熱狂度)'].sum().reset_index().sort_values(by='VPH (熱狂度)', ascending=False)
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.dataframe(concept_df.style.format({"VPH (熱狂度)": "{:,}"}), use_container_width=True)
+                with c2:
+                    if concept_df['VPH (熱狂度)'].sum() > 0:
+                        pie = alt.Chart(concept_df).mark_arc().encode(
+                            theta=alt.Theta(field="VPH (熱狂度)", type="quantitative"),
+                            color=alt.Color(field="コンセプト", type="nominal"),
+                            tooltip=["コンセプト", "VPH (熱狂度)"]
+                        ).properties(height=300)
+                        st.altair_chart(pie, use_container_width=True)
+                    else:
+                        st.info("※データ更新を複数回実行すると円グラフが表示されます。")
+                
+                st.divider()
+                
+                st.subheader("✏️ コンセプト修正 (手動チューニング)")
+                all_options = list(CONCEPT_KEYWORDS.keys()) + ["その他"]
+                for vid in video_ids:
+                    curr_c = st.session_state.video_concepts[vid]
+                    v_row = stats_df[stats_df['video_id'] == vid]
+                    v_title = v_row['タイトル'].values[0] if not v_row.empty else vid
+                    
+                    idx = all_options.index(curr_c) if curr_c in all_options else len(all_options)-1
+                    new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
+                    if new_c != curr_c:
+                        st.session_state.video_concepts[vid] = new_c
+                        st.rerun()
+                
+                st.divider()
+                st.subheader("📊 詳細データ一覧")
+                st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
+            else:
+                st.info("👈 左側の「今すぐデータ取得」を押してデータを初期生成してください。")
         else:
-            st.info("👈 左側の「今すぐデータ取得」を押してデータを初期生成してください。")
+            st.info("👈 データベースが空です。左側の「今すぐデータ取得」を押してください。")
 except Exception as e:
     st.error(f"エラー: {e}")
-finally:
-    conn.close()
