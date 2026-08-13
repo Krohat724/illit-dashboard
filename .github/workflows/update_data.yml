@@ -40,5 +40,5 @@ jobs:
           git add youtube_stats.db
           git diff --cached --quiet || git commit -m "Auto-update YouTube stats database"
           git fetch origin main
-          git pull --rebase --autostash origin main || true
-          git push origin main || true
+          git pull origin main
+          git push
