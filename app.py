@@ -28,7 +28,7 @@ supabase_headers = {
 CONCEPT_KEYWORDS = {
     "イージーリスニング": [
         "easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", 
-        "magnetic", "아일릿", "cherish", "tick-tack",  "iykyk", "lofi", "soft"
+        "magnetic", "cherish", "tick-tack",  "iykyk", "lofi", "soft"
     ],
     "Y2K・レトロ": [
         "y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "뉴진스", 
