@@ -34,8 +34,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git rebase origin/main
           git add youtube_stats.db
           git commit -m "Auto-update YouTube stats database" || exit 0
-          git push origin main
+          git pull --rebase origin main
+          git push
