@@ -30,9 +30,7 @@ supabase_headers = {
 }
 
 DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング",
-    "a81S40mS_4A": "Y2K・レトロ",
-    "43MlyGCoQ7k": "ガールクラッシュ"
+    "Vk5-c_v4gMU": "イージーリスニング"
 }
 
 CONCEPT_KEYWORDS = {
