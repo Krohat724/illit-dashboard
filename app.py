@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -6,10 +5,11 @@ from datetime import datetime
 import re
 import altair as alt
 import os
+import google.generativeai as genai
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("🎵 K-POP トレンド覇権ダッシュボード (MVP)")
+st.title("🔥 K-POP トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標定義:** `VPH` (直近1時間の再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
@@ -17,6 +17,11 @@ st.divider()
 API_KEY = st.secrets.get("YOUTUBE_API_KEY", os.environ.get("YOUTUBE_API_KEY"))
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY"))
+
+# Gemini APIの初期設定
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 supabase_headers = {
     "apikey": SUPABASE_KEY,
@@ -25,7 +30,9 @@ supabase_headers = {
 }
 
 DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング"
+    "Vk5-c_v4gMU": "イージーリスニング",
+    "a81S40mS_4A": "Y2K・レトロ",
+    "43MlyGCoQ7k": "ガールクラッシュ
 }
 
 CONCEPT_KEYWORDS = {
@@ -54,26 +61,44 @@ def extract_video_id(url_or_id):
     match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url_or_id)
     return match.group(1) if match else None
 
+# 🔥 完全にGemini AIに任せる判定エンジン
 def auto_detect_concept(video_id):
     try:
         url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
         res = requests.get(url).json()
         if "items" in res and len(res["items"]) > 0:
             snippet = res["items"][0]["snippet"]
-            title_lower = snippet.get("title", "").lower()
-            tags_lower = [tag.lower() for tag in snippet.get("tags", [])]
-            scores = {concept: 0 for concept in CONCEPT_KEYWORDS.keys()}
-            for concept, keywords in CONCEPT_KEYWORDS.items():
-                for kw in keywords:
-                    if kw in tags_lower: scores[concept] += 3
-                    if kw in title_lower: scores[concept] += 2
-            best = max(scores, key=scores.get)
-            if scores[best] > 0: return best
-    except Exception:
+            title = snippet.get("title", "")
+            tags = snippet.get("tags", [])
+            
+            concept_list = list(CONCEPT_KEYWORDS.keys())
+            
+            # AIへの命令（プロンプト）
+            prompt = f"""
+            あなたはK-POPエンタメトレンドの専門アナリストです。
+            以下のYouTube動画のタイトルとタグを見て、最も適切なコンセプトを以下のリストから1つだけ選んで出力してください。
+            ※必ずリストにある単語だけを出力し、それ以外の文章は一切含めないでください。
+            
+            【コンセプトリスト】
+            {concept_list}
+            
+            【動画情報】
+            タイトル: {title}
+            タグ: {tags}
+            """
+            
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
+            detected_concept = response.text.strip()
+            
+            # AIがリスト内の言葉をちゃんと選んだ場合のみ採用
+            if detected_concept in concept_list:
+                return detected_concept
+    except Exception as e:
+        print(f"AI判定エラー: {e}")
         pass
     return "その他"
 
-# 🔥 新機能: データ取得とSupabase保存を全自動で行うエンジン
 def fetch_and_save_data(video_dict):
     if not video_dict: return 0
     ids_str = ",".join(video_dict.keys())
@@ -91,11 +116,11 @@ def fetch_and_save_data(video_dict):
                 "likes": int(item["statistics"].get('likeCount', 0)),
                 "comments": 0
             }
-            post_res = requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
+            post_res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
             if post_res.status_code in [200, 201]:
                 success_count += 1
             else:
-                st.error(f"DB保存エラー: {post_res.text}") # エラーがあれば画面に出す
+                st.error(f"DB保存エラー: {post_res.text}")
     return success_count
 
 
@@ -107,12 +132,11 @@ if st.sidebar.button("⚡️ URLから追加"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in st.session_state.video_concepts:
-            with st.sidebar.status("🤖 解析とデータ取得中..."):
+            with st.sidebar.status("🤖 AIがジャンルを解析＆データ取得中..."):
                 detected = auto_detect_concept(vid)
                 st.session_state.video_concepts[vid] = detected
-                # 🔥 追加した瞬間に自動でデータを取得しDBに保存する
                 fetch_and_save_data({vid: detected})
-            st.rerun() # 処理が終わったら強制リロードして即グラフを出す
+            st.rerun()
         else:
             st.sidebar.warning("既に存在します。")
     else:
@@ -135,9 +159,9 @@ try:
     video_ids = list(st.session_state.video_concepts.keys())
     if video_ids:
         # Supabaseからデータ取得
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/multi_video_stats?select=*", headers=supabase_headers)
+        target_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
+        res = requests.get(target_url, headers=supabase_headers)
         
-        # 🔥 もしDBが空っぽなら、勝手に初期データを取得してリロードする
         if res.status_code == 200 and len(res.json()) == 0:
             with st.spinner("🚀 初回データベースを自動構築中... (数秒お待ちください)"):
                 fetch_and_save_data(st.session_state.video_concepts)
@@ -208,7 +232,6 @@ try:
                     new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
                     if new_c != curr_c:
                         st.session_state.video_concepts[vid] = new_c
-                        # 変更があったら即時反映！
                         st.rerun()
                 
                 st.divider()
@@ -216,5 +239,6 @@ try:
                 st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
         else:
              st.error(f"データベースの読み込みに失敗しました: エラーコード {res.status_code}")
+             st.error(f"エラー詳細: {res.text}")
 except Exception as e:
     st.error(f"エラー: {e}")
