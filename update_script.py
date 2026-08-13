@@ -1,46 +1,44 @@
 import os
-import sqlite3
 import requests
 from datetime import datetime
 
 API_KEY = os.environ.get("YOUTUBE_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
 DEFAULT_IDS = ["Vk5-c_v4gMU", "a81S40mS_4A", "43MlyGCoQ7k"]
 
-if not API_KEY:
-    print("Error: YOUTUBE_API_KEY environment variable is missing.")
-    exit(1)
+# Supabaseから現在の動画IDリストを取得
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
-conn = sqlite3.connect('youtube_stats.db')
-cursor = conn.cursor()
+res = requests.get(f"{SUPABASE_URL}/rest/v1/multi_video_stats?select=video_id", headers=headers)
+if res.status_code == 200 and len(res.json()) > 0:
+    video_ids = list(set([item["video_id"] for item in res.json()]))
+else:
+    video_ids = DEFAULT_IDS
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS multi_video_stats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT, video_id TEXT, title TEXT, views INTEGER, likes INTEGER, comments INTEGER
-    )
-''')
+# YouTube APIからデータ取得
+ids_str = ",".join(video_ids)
+yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
+yt_res = requests.get(yt_url).json()
 
-# DBにある全動画IDを動的取得
-cursor.execute('SELECT DISTINCT video_id FROM multi_video_stats')
-rows = cursor.fetchall()
-video_ids = [r[0] for r in rows] if rows else DEFAULT_IDS
-
-if video_ids:
-    ids_str = ",".join(video_ids)
-    url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
-    response = requests.get(url)
-    data = response.json()
-
-    if "items" in data:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        for item in data["items"]:
-            cursor.execute('''
-                INSERT INTO multi_video_stats (timestamp, video_id, title, views, likes, comments)
-                VALUES (?, ?, ?, ?, ?, 0)
-            ''', (now, item["id"], item["snippet"]["title"], int(item["statistics"].get('viewCount', 0)), int(item["statistics"].get('likeCount', 0))))
-        conn.commit()
-        print(f"[{now}] Successfully updated {len(data['items'])} videos.")
-    else:
-        print("Failed to fetch data from YouTube API:", data)
-
-conn.close()
+if "items" in yt_res:
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for item in yt_res["items"]:
+        payload = {
+            "timestamp": now,
+            "video_id": item["id"],
+            "title": item["snippet"]["title"],
+            "views": int(item["statistics"].get('viewCount', 0)),
+            "likes": int(item["statistics"].get('likeCount', 0)),
+            "comments": 0
+        }
+        # Supabaseへ直接データ送信 (INSERT)
+        requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=headers, json=payload)
+    print(f"[{now}] Successfully updated {len(yt_res['items'])} videos to Supabase.")
+else:
+    print("Failed to fetch from YouTube.")
