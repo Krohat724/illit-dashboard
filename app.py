@@ -5,7 +5,6 @@ from datetime import datetime
 import re
 import altair as alt
 import os
-import google.generativeai as genai
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
@@ -17,41 +16,69 @@ st.divider()
 API_KEY = st.secrets.get("YOUTUBE_API_KEY", os.environ.get("YOUTUBE_API_KEY"))
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY"))
-
-# Gemini APIの初期設定
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 supabase_headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
 }
 
-DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング"
-}
-
+# ----------------------------------------------------
+# 📚 超強化版 K-POP コンセプト判定辞書
+# ----------------------------------------------------
 CONCEPT_KEYWORDS = {
-    "イージーリスニング": ["easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", "magnetic"],
-    "ティーンクラッシュ": ["teen crush", "ティーンクラッシュ", "rebel", "woke up"],
-    "ガールクラッシュ": ["girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "aespa", "baddie", "xg"],
-    "ハイティーン": ["high teen", "ハイティーン", "school", "prom", "cheerleader", "highschool"],
-    "ダーク・ホラー": ["dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare", "dreamcatcher"],
-    "ストリート・ヒップホップ": ["street", "hiphop", "hip hop", "ストリート", "ヒップホップ", "rap", "swag"],
-    "ファンタジー": ["fantasy", "ファンタジー", "magic", "fairytale", "fairy", "magical"],
-    "清純・青春・キュート": ["pure", "cute", "innocent", "youth", "清純", "青春", "キュート", "kawaii"],
-    "Y2K・レトロ": ["y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "vintage"],
-    "ディスコ・ファンク": ["disco", "funk", "ディスコ", "ファンク", "retro pop", "groove"],
-    "SF・ファンタジー": ["sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space", "supernova"],
-    "セクシー": ["sexy", "セクシー", "mature", "alluring", "sensual"],
-    "エレガント・ロイヤル": ["elegant", "royal", "エレガント", "ロイヤル", "queen", "princess", "luxury", "ive"]
+    "イージーリスニング": [
+        "easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", 
+        "magnetic", "illit", "아일릿", "cherish", "tick-tack", "lucky girl", "iykyk", "lofi", "soft"
+    ],
+    "Y2K・レトロ": [
+        "y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "뉴진스", 
+        "hype boy", "ditto", "omg", "eta", "super shy", "how sweet", "bubble gum", "vintage"
+    ],
+    "SF・ファンタジー": [
+        "sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space", "supernova", 
+        "aespa", "エスパ", "에스파", "armageddon", "drama", "savage", "next level", "hyper"
+    ],
+    "ガールクラッシュ": [
+        "girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "블랙핑크", 
+        "babymonster", "sheesh", "drip", "baddie", "ive", "아이브", "xg", "woke up", "kepi"
+    ],
+    "ティーンクラッシュ": [
+        "teen crush", "ティーンクラッシュ", "rebel", "itzy", "있지", "not shy", "wannabe", 
+        "sneakers", "untouchable", "highschool", "teen"
+    ],
+    "エレガント・ロイヤル": [
+        "elegant", "royal", "エレガント", "ロイヤル", "queen", "princess", "luxury", 
+        "love dive", "after like", "i am", "heya", "accent"
+    ],
+    "ハイティーン": [
+        "high teen", "ハイティーン", "school", "prom", "cheerleader", "stayc", "스테이씨", 
+        "asap", "teddy bear", "bubble"
+    ],
+    "ダーク・ホラー": [
+        "dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare", 
+        "dreamcatcher", "voodoo", "monster", "vampire"
+    ],
+    "ストリート・ヒップホップ": [
+        "street", "hiphop", "hip hop", "ストリート", "ヒップホップ", "rap", "swag", 
+        "stray kids", "bts", "ateez", "dance practice", "choreo"
+    ],
+    "清純・青春・キュート": [
+        "pure", "cute", "innocent", "youth", "清純", "青春", "キュート", "kawaii", 
+        "twice", "tws", "トゥアス", "plot twist", "first meeting"
+    ],
+    "ディスコ・ファンク": [
+        "disco", "funk", "ディスコ", "ファンク", "retro pop", "groove", "dynamite", "butter"
+    ]
 }
 
-if "video_concepts" not in st.session_state:
-    st.session_state.video_concepts = DEFAULT_CONCEPTS.copy()
+# 初期のデフォルト動画データ
+DEFAULT_DATABASE = {
+    "Vk5-c_v4gMU": {"concept": "イージーリスニング", "title": "Magnetic"}
+}
 
+# URLから動画IDを抽出
 def extract_video_id(url_or_id):
     url_or_id = url_or_id.strip()
     if len(url_or_id) == 11 and not ("/" in url_or_id or "." in url_or_id):
@@ -59,47 +86,89 @@ def extract_video_id(url_or_id):
     match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url_or_id)
     return match.group(1) if match else None
 
-# 🔥 完全にGemini AIに任せる判定エンジン
-def auto_detect_concept(video_id):
+# ----------------------------------------------------
+# 💾 Supabase (データベース) との連動ロジック
+# ----------------------------------------------------
+def load_concepts_from_db():
+    """Supabaseから登録済み動画とコンセプトの一覧を取得"""
     try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_concepts?select=*"
+        res = requests.get(url, headers=supabase_headers)
+        if res.status_code == 200:
+            data = res.json()
+            if data:
+                return {row['video_id']: {"concept": row['concept'], "title": row.get('title', '')} for row in data}
+    except Exception as e:
+        st.error(f"DB読み込みエラー: {e}")
+    
+    # DBが空の場合はデフォルト値を保存して返す
+    for vid, info in DEFAULT_DATABASE.items():
+        save_concept_to_db(vid, info['concept'], info['title'])
+    return DEFAULT_DATABASE.copy()
+
+def save_concept_to_db(video_id, concept, title=""):
+    """Supabaseに動画とコンセプトを保存/更新 (UPSERT)"""
+    try:
+        payload = {
+            "video_id": video_id,
+            "concept": concept,
+            "title": title,
+            "updated_at": datetime.now().isoformat()
+        }
+        headers = supabase_headers.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_concepts"
+        requests.post(url, headers=headers, json=payload)
+    except Exception as e:
+        print(f"DB保存エラー: {e}")
+
+# ----------------------------------------------------
+# 🔍 辞書マッチング自動判定エンジン (超強化版)
+# ----------------------------------------------------
+def auto_detect_concept_dict(video_id):
+    try:
+        # snippet（タイトル、説明欄、タグ）を取得
         url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
         res = requests.get(url).json()
+        
         if "items" in res and len(res["items"]) > 0:
             snippet = res["items"][0]["snippet"]
-            title = snippet.get("title", "")
-            tags = snippet.get("tags", [])
+            title = snippet.get("title", "").lower()
+            description = snippet.get("description", "").lower()
+            tags = [t.lower() for t in snippet.get("tags", [])]
             
-            concept_list = list(CONCEPT_KEYWORDS.keys())
+            # 全文テキスト結合
+            full_text = f"{title} {description} {' '.join(tags)}"
             
-            # AIへの命令（プロンプト）
-            prompt = f"""
-            あなたはK-POPエンタメトレンドの専門アナリストです。
-            以下のYouTube動画のタイトルとタグを見て、最も適切なコンセプトを以下のリストから1つだけ選んで出力してください。
-            ※必ずリストにある単語だけを出力し、それ以外の文章は一切含めないでください。
+            # 各コンセプトのスコア計算
+            scores = {}
+            for concept, keywords in CONCEPT_KEYWORDS.items():
+                score = 0
+                for kw in keywords:
+                    kw_lower = kw.lower()
+                    if kw_lower in title:
+                        score += 5  # タイトルに含まれていれば高得点
+                    if kw_lower in tags:
+                        score += 3  # タグに含まれていれば中得点
+                    if kw_lower in description:
+                        score += 1  # 概要欄に含まれていれば加点
+                if score > 0:
+                    scores[concept] = score
             
-            【コンセプトリスト】
-            {concept_list}
+            # 最もスコアが高いコンセプトを選択
+            if scores:
+                best_concept = max(scores, key=scores.get)
+                return best_concept, snippet.get("title", "")
             
-            【動画情報】
-            タイトル: {title}
-            タグ: {tags}
-            """
-            
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            detected_concept = response.text.strip()
-            
-            # AIがリスト内の言葉をちゃんと選んだ場合のみ採用
-            if detected_concept in concept_list:
-                return detected_concept
+            return "その他", snippet.get("title", "")
     except Exception as e:
-        print(f"AI判定エラー: {e}")
-        pass
-    return "その他"
+        print(f"解析エラー: {e}")
+        
+    return "その他", ""
 
-def fetch_and_save_data(video_dict):
-    if not video_dict: return 0
-    ids_str = ",".join(video_dict.keys())
+def fetch_and_save_data(video_ids):
+    if not video_ids: return 0
+    ids_str = ",".join(video_ids)
     url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={ids_str}&key={API_KEY}"
     res = requests.get(url).json()
     success_count = 0
@@ -117,10 +186,14 @@ def fetch_and_save_data(video_dict):
             post_res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
             if post_res.status_code in [200, 201]:
                 success_count += 1
-            else:
-                st.error(f"DB保存エラー: {post_res.text}")
     return success_count
 
+
+# ----------------------------------------------------
+# 📱 画面描画ロジック
+# ----------------------------------------------------
+# DBから永続化データを取得
+db_concepts = load_concepts_from_db()
 
 # サイドバー
 st.sidebar.header("⚙️ 監視対象の追加")
@@ -129,40 +202,37 @@ new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://w
 if st.sidebar.button("⚡️ URLから追加"):
     vid = extract_video_id(new_input)
     if vid:
-        if vid not in st.session_state.video_concepts:
-            with st.sidebar.status("🤖 AIがジャンルを解析＆データ取得中..."):
-                detected = auto_detect_concept(vid)
-                st.session_state.video_concepts[vid] = detected
-                fetch_and_save_data({vid: detected})
+        if vid not in db_concepts:
+            with st.sidebar.status("🔍 辞書検索でジャンルを解析中..."):
+                detected_concept, v_title = auto_detect_concept_dict(vid)
+                # DBに永久保存！
+                save_concept_to_db(vid, detected_concept, v_title)
+                fetch_and_save_data([vid])
+            st.sidebar.success(f"追加完了: 【{detected_concept}】")
             st.rerun()
         else:
             st.sidebar.warning("既に存在します。")
     else:
         st.sidebar.error("有効なURLを入力してください。")
 
-if st.sidebar.button("🗑️ リセット"):
-    st.session_state.video_concepts = DEFAULT_CONCEPTS.copy()
-    st.sidebar.info("初期状態に戻しました。")
-
 st.sidebar.divider()
 
 if st.sidebar.button("🔄 手動で最新データ取得"):
     with st.spinner("最新データを取得中..."):
-        cnt = fetch_and_save_data(st.session_state.video_concepts)
+        cnt = fetch_and_save_data(list(db_concepts.keys()))
     if cnt > 0:
         st.rerun()
 
-# メイン画面のデータ可視化ロジック
+# メイン画面のデータ可視化
 try:
-    video_ids = list(st.session_state.video_concepts.keys())
+    video_ids = list(db_concepts.keys())
     if video_ids:
-        # Supabaseからデータ取得
         target_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
         res = requests.get(target_url, headers=supabase_headers)
         
         if res.status_code == 200 and len(res.json()) == 0:
-            with st.spinner("🚀 初回データベースを自動構築中... (数秒お待ちください)"):
-                fetch_and_save_data(st.session_state.video_concepts)
+            with st.spinner("🚀 初回データベースを自動構築中..."):
+                fetch_and_save_data(video_ids)
                 st.rerun()
                 
         elif res.status_code == 200 and len(res.json()) > 0:
@@ -179,7 +249,7 @@ try:
                         latest, oldest = v_data.iloc[-1], v_data.iloc[0]
                         clean_title = latest['title'].replace("ILLIT (아일릿) ", "").replace(" '", "").replace("'", "")
                         views, likes = latest['views'], latest['likes']
-                        concept = st.session_state.video_concepts[vid]
+                        concept = db_concepts[vid]["concept"]
                         
                         eng_rate = (likes / views * 100) if views > 0 else 0
                         time_diff = (latest['timestamp'] - oldest['timestamp']).total_seconds() / 3600
@@ -219,24 +289,25 @@ try:
                 
                 st.divider()
                 
-                st.subheader("✏️ コンセプト修正 (手動チューニング)")
+                st.subheader("✏️ コンセプト修正 (手動チューニング・永久保存)")
                 all_options = list(CONCEPT_KEYWORDS.keys()) + ["その他"]
                 for vid in video_ids:
-                    curr_c = st.session_state.video_concepts[vid]
+                    curr_c = db_concepts[vid]["concept"]
                     v_row = stats_df[stats_df['video_id'] == vid]
                     v_title = v_row['タイトル'].values[0] if not v_row.empty else vid
                     
                     idx = all_options.index(curr_c) if curr_c in all_options else len(all_options)-1
                     new_c = st.selectbox(f"🔗 「{v_title}」", all_options, index=idx, key=f"sel_{vid}")
+                    
+                    # ユーザーが変更したら即座にSupabaseに更新保存！
                     if new_c != curr_c:
-                        st.session_state.video_concepts[vid] = new_c
+                        save_concept_to_db(vid, new_c, v_title)
                         st.rerun()
                 
                 st.divider()
                 st.subheader("📊 詳細データ一覧")
                 st.dataframe(stats_df.drop(columns=['video_id']).style.format({"累計再生数": "{:,}", "VPH (熱狂度)": "{:,}", "ENG率 (%)": "{:.2f}"}), use_container_width=True)
         else:
-             st.error(f"データベースの読み込みに失敗しました: エラーコード {res.status_code}")
-             st.error(f"エラー詳細: {res.text}")
+             st.error(f"データベースエラー: {res.status_code}")
 except Exception as e:
     st.error(f"エラー: {e}")
