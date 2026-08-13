@@ -16,17 +16,17 @@ API_KEY = "AIzaSyBaWeV6deabeQpxPqpElHZN0Nr0zUNKcEQ"
 
 # --- ここから追加：自動判別エンジン ---
 CONCEPT_KEYWORDS = {
-    "イージーリスニング": ["easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング"],
-    "ティーンクラッシュ": ["teen crush", "ティーンクラッシュ", "teen", "rebel", "woke up"],
-    "ガールクラッシュ": ["girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "aespa", "baddie"],
+    "イージーリスニング": ["easy listening", "chill", "lo-fi", "アコースティック", "イージーリスニング", "magnetic"],
+    "ティーンクラッシュ": ["teen crush", "ティーンクラッシュ", "rebel", "woke up"],
+    "ガールクラッシュ": ["girl crush", "ガールクラッシュ", "badass", "hiphop", "blackpink", "aespa", "baddie", "xg"],
     "ハイティーン": ["high teen", "ハイティーン", "school", "prom", "cheerleader", "highschool"],
-    "ダーク・ホラー": ["dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare"],
+    "ダーク・ホラー": ["dark", "horror", "ダーク", "ホラー", "creepy", "mystery", "nightmare", "dreamcatcher"],
     "ストリート・ヒップホップ": ["street", "hiphop", "hip hop", "ストリート", "ヒップホップ", "rap", "swag"],
-    "ファンタジー": ["fantasy", "ファンタジー", "magic", "fairytale", "fairy"],
+    "ファンタジー": ["fantasy", "ファンタジー", "magic", "fairytale", "fairy", "magical"],
     "清純・青春・キュート": ["pure", "cute", "innocent", "youth", "清純", "青春", "キュート", "かわいい", "kawaii"],
     "Y2K・レトロ": ["y2k", "retro", "レトロ", "nostalgia", "90s", "00s", "newjeans", "vintage"],
     "ディスコ・ファンク": ["disco", "funk", "ディスコ", "ファンク", "retro pop", "groove"],
-    "SF・ファンタジー": ["sf", "sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space"],
+    "SF・ファンタジー": ["sci-fi", "cyberpunk", "サイバーパンク", "宇宙", "alien", "space", "supernova"],
     "セクシー": ["sexy", "セクシー", "mature", "alluring", "sensual"],
     "エレガント・ロイヤル": ["elegant", "royal", "エレガント", "ロイヤル", "queen", "princess", "luxury", "ive"]
 }
@@ -36,12 +36,30 @@ def auto_detect_concept(video_id):
     response = requests.get(url).json()
     if "items" in response and len(response["items"]) > 0:
         snippet = response["items"][0]["snippet"]
-        text_to_search = (snippet.get("title", "") + " " + snippet.get("description", "") + " " + " ".join(snippet.get("tags", []))).lower()
+        title_lower = snippet.get("title", "").lower()
+        # タグリストを取得（小文字化）
+        tags_lower = [tag.lower() for tag in snippet.get("tags", [])]
         
+        # 1. コンセプトごとのスコア表を準備（最初は全員0点）
+        scores = {concept: 0 for concept in CONCEPT_KEYWORDS.keys()}
+        
+        # 2. 判定ロジック
         for concept, keywords in CONCEPT_KEYWORDS.items():
             for kw in keywords:
-                if kw in text_to_search:
-                    return concept
+                # タグの中に「完全一致」するキーワードがあれば高得点（+3）
+                if kw in tags_lower:
+                    scores[concept] += 3
+                # タイトルの中にキーワードが含まれていれば中得点（+2）
+                if kw in title_lower:
+                    scores[concept] += 2
+                    
+        # 3. 最もスコアの高いコンセプトを算出
+        best_concept = max(scores, key=scores.get)
+        
+        # 4. 1点以上獲得していればそのコンセプトを返し、0点なら「その他」にする
+        if scores[best_concept] > 0:
+            return best_concept
+            
     return "その他"
 # --- 追加ここまで ---
 
