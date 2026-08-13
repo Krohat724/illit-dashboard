@@ -62,19 +62,19 @@ CONCEPT_KEYWORDS = {
     ],
     
     "SF・サイバーパンク・ハイパーポップ": [
-        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "ai", "robot", "android", "dystopia", 
+        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "robot", "android", "dystopia", 
         "portal", "multiverse", "avatar", "hyperpop", "futuristic", "metallic", "industrial", "glitch", 
         "distortion", "heavy synth", "neon", "chrome", "hologram", "laser", "spaceship", "galaxy", "cosmos", 
-        "orbit", "satellite", "cyber", "matrix", "quantum", "cyborg", "tech", "vr", "ar", "digital", "code", 
+        "orbit", "satellite", "cyber", "matrix", "quantum", "cyborg", "tech",  "digital", "code", 
         "data", "synthcore", "electronic", "edm", "dubstep", "autotune", "hardstyle", "noise", "future bass", 
         "3d", "cgi", "mechanical", "exoskeleton", "bio", "lab", "experiment", "clone", "supernova", "teleport",
         "dimension", "beam", "laser beam", "mecha", "android heart", "nanotech", "time travel",
         "우주", "가상", "미래", "가상현실", "사이버", "인공지능", "로봇", "아바타", "미래도시", "사이버펑크", 
         "네온", "메타버스", "광선", "글리치", "하이퍼팝", "홀로그램", "디스토피아", "우주선", "은하", "광속", 
         "차원", "sf영화", "외계인", "기계", "크롬", "차원이동", "양자", "데이터", "오토튠", "컴퓨터", "실험실",
-        "サイバーパンク", "宇宙", "近未来", "仮想空間", "ディストピア", "アバター", "異次元", "sf", 
+        "サイバーパンク", "宇宙", "近未来", "仮想空間", "ディストピア", "アバター", "異次元", 
         "メタリック", "インダストリアル", "グリッチ", "歪み", "ハイパーポップ", "ホログラム", "クローム", 
-        "レーザー", "ロボット", "ai", "未来都市", "電脳", "メタバース", "宇宙船", "cg", "異空間", 
+        "レーザー", "ロボット",  "未来都市", "電脳", "メタバース", "宇宙船",  "異空間", 
         "ワープ", "タイムトラベル", "超次元", "電子音", "重低音", "機械仕掛け", "サイボーグ"
     ],
     
