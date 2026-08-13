@@ -84,14 +84,35 @@ def extract_video_id(url_or_id):
 st.sidebar.header("⚙️ トレンド監視対象の追加")
 new_input = st.sidebar.text_input("➕ YouTube動画URL", placeholder="https://www.youtube.com/watch?v=...")
 
-if st.sidebar.button("⚡️ URLから自動解析して追加"):
+# 手動で選べるコンセプトのリスト
+concept_options = [
+    "イージーリスニング", "ティーンクラッシュ", "ガールクラッシュ", "ハイティーン", 
+    "ダーク・ホラー", "ストリート・ヒップホップ", "ファンタジー", 
+    "清純・青春・キュート", "Y2K・レトロ", "ディスコ・ファンク", 
+    "SF・ファンタジー", "セクシー", "エレガント・ロイヤル", "その他"
+]
+
+# まず自動判定を試みるが、ユーザーがセレクトボックスで選べるようにする
+default_concept = "その他"
+if new_input and len(extract_video_id(new_input) or "") == 11:
+    # URLが入力された瞬間、裏で自動判定のヒントを出す
+    temp_vid = extract_video_id(new_input)
+    default_concept = auto_detect_concept(temp_vid)
+
+# デフォルトの選択肢を自動判定結果に合わせる（でもユーザーが変えられる）
+try:
+    default_index = concept_options.index(default_concept)
+except ValueError:
+    default_index = len(concept_options) - 1
+
+selected_concept = st.sidebar.selectbox("🏷 コンセプトタグ (自動判定済・変更可)", concept_options, index=default_index)
+
+if st.sidebar.button("分析対象に追加する"):
     vid = extract_video_id(new_input)
     if vid:
         if vid not in st.session_state.video_concepts:
-            with st.sidebar.status("🤖 動画のメタデータを解析中..."):
-                detected_concept = auto_detect_concept(vid)
-            st.session_state.video_concepts[vid] = detected_concept
-            st.sidebar.success(f"追加完了！自動判定: 【{detected_concept}】")
+            st.session_state.video_concepts[vid] = selected_concept
+            st.sidebar.success(f"追加完了！ (分類: 【{selected_concept}】)")
         else:
             st.sidebar.warning("既に監視リストに存在します。")
     else:
