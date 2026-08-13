@@ -58,13 +58,13 @@ CONCEPT_KEYWORDS = {
     ],
     
     "SF・サイバーパンク・ハイパーポップ": [
-        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "ai", "robot", "android", 
+        "sci-fi", "cyberpunk", "space", "alien", "metaverse", "virtual", "robot", "android", 
         "dystopia", "portal", "multiverse", "avatar", "hyperpop", "futuristic", "metallic", 
         "industrial", "glitch", "distortion", "heavy synth", "neon", "chrome", "hologram", 
         "laser", "spaceship", "galaxy", "cosmos", "cyber", "matrix", "quantum", "cyborg", "tech", 
-        "vr", "ar", "digital", "code", "synthcore", "electronic", "edm", "dubstep", "autotune", 
-        "hardstyle", "noise", "future bass", "3d", "cgi", "mechanical", "exoskeleton", "clone", 
-        "supernova", "teleport", "dimension", "mecha", "nanotech", "time travel",
+        "digital", "code", "synthcore", "electronic", "edm", "dubstep", "autotune", 
+        "hardstyle", "noise", "future bass", "cgi", "mechanical", "exoskeleton", "clone", 
+        "teleport", "dimension", "mecha", "nanotech", "time travel",
         "우주", "가상", "미래", "가상현실", "사이버", "인공지능", "로봇", "아바타", "미래도시", 
         "사이버펑크", "네온", "메타버스", "광선", "글리치", "하이퍼팝", "홀로그램", "디스토피아", 
         "우주선", "은하", "광속", "차원", "sf영화", "외계인", "기계", "크롬", "차원이동", "양자", 
