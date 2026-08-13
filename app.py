@@ -28,17 +28,16 @@ supabase_headers = {
 # 📚 コンセプト解析辞書 (英語は単語境界で厳密一致、CJKはトラップ除外)
 # ----------------------------------------------------
 CONCEPT_KEYWORDS = {
-    "イージーリスニング・チル": [
-        "easy listening", "chill", "lofi", "lo-fi", "acoustic", "soft pop", "mellow", 
-        "ambient", "cozy", "relaxing", "piano", "acoustic guitar", "smooth", "soothing", 
-        "calm", "peaceful", "dreamy", "bedroom", "house", "deep house", "tropical house", 
-        "bossa nova", "jazz pop", "indie pop", "r&b", "neo soul", "ukulele", "midtempo", 
-        "falsetto", "soft vocals", "comfort", "healing",
-        "잔잔한", "편안한", "힐링", "쉬는날", "어쿠스틱", "자장가", "평화", "노을", "미니멀", 
-        "휴식", "멍때리기", "이지리스닝", "부드러운", "소소한", "침실", "오후", "따스한", "차분한",
-        "ヒーリング", "チル", "アコースティック", "メロウ", "アンビエント", "癒やし", "穏やか", 
-        "スローテンポ", "日常", "散歩", "ベッドルーム", "ナチュラル", "落ち着く", "休日", "ゆったり", 
-        "眠れる", "優しい", "ぬくもり", "心地よい", "部屋", "のんびり", "そよ風"
+   "イージーリスニング・チル": [
+        "easy listening", "lofi", "lo-fi", "acoustic", "mellow", 
+        "ambient", "cozy", "relaxing", "acoustic guitar", "soothing", 
+        "peaceful", "dreamy", "tropical house", "bossa nova", "jazz pop", 
+        "neo soul", "ukulele", "midtempo", "falsetto", "soft vocals", "healing",
+        "잔잔한", "편안한", "힐링", "어쿠스틱", "자장가", "평화",
+        "미니멀", "이지리스닝", "부드러운", "따스한", "차분한",
+        "ヒーリング", "アコースティック", "メロウ", "アンビエント", 
+        "癒やし", "穏やか", "スローテンポ", "落ち着く", "ゆったり", 
+        "眠れる", "心地よい", "のんびり", "そよ風"
     ],
     
     "Y2K・レトロアナログ": [
