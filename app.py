@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
-st.title("ILLIT MV  トレンド覇権ダッシュボード (MVP)")
+st.title("ILLIT MV トレンド覇権ダッシュボード (MVP)")
 st.markdown("**指標定義:** `VPH` (直近1時間の再生増加数) / `ENG` (エンゲージメント率 = 高評価÷再生数)")
 st.divider()
 
@@ -24,7 +24,7 @@ supabase_headers = {
 }
 
 DEFAULT_CONCEPTS = {
-    "Vk5-c_v4gMU": "イージーリスニング"
+    "Vk5-c_v4gMU": "イージーリスニング",
 }
 
 CONCEPT_KEYWORDS = {
@@ -101,6 +101,7 @@ if st.sidebar.button("🔄 今すぐデータ取得"):
         res = requests.get(url).json()
         if "items" in res:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            success_count = 0
             for item in res["items"]:
                 payload = {
                     "timestamp": now,
@@ -110,8 +111,15 @@ if st.sidebar.button("🔄 今すぐデータ取得"):
                     "likes": int(item["statistics"].get('likeCount', 0)),
                     "comments": 0
                 }
-                requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
-            st.sidebar.success("Supabaseに最新データを保存しました！")
+                post_res = requests.post(f"{SUPABASE_URL}/rest/v1/multi_video_stats", headers=supabase_headers, json=payload)
+                if post_res.status_code in [200, 201]:
+                    success_count += 1
+                else:
+                    st.sidebar.error(f"保存失敗 ({post_res.status_code}): {post_res.text}")
+            
+            if success_count > 0:
+                st.sidebar.success(f"Supabaseに{success_count}件のデータを保存しました！")
+                st.rerun()
 
 # データ可視化ロジック
 try:
@@ -122,7 +130,6 @@ try:
         
         if res.status_code == 200 and len(res.json()) > 0:
             df = pd.DataFrame(res.json())
-            # 監視対象の動画だけをフィルタリング
             df = df[df['video_id'].isin(video_ids)]
             
             if not df.empty:
