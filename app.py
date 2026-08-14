@@ -152,25 +152,7 @@ CONCEPT_KEYWORDS = {
 DEFAULT_DATABASE = {
     "Vk5-c_v4gMU": {"concept": "イージーリスニング・チル", "title": "Magnetic"}
 }
-def classify_concept_by_score(text, keywords_dict):
-    text_lower = text.lower() # 大文字小文字の揺れをなくす
-    scores = {concept: 0 for concept in keywords_dict}
-    
-    # 全コンセプトの得点を計算
-    for concept, words in keywords_dict.items():
-        for word in words:
-            if word in text_lower:
-                scores[concept] += 1
-                
-    # 一番得点が高いコンセプトを見つける
-    max_concept = max(scores, key=scores.get)
-    max_score = scores[max_concept]
-    
-    # 閾値（足切りライン）：1つの単語が偶然入っていただけなら「その他」に弾く
-    if max_score >= 2: 
-        return max_concept
-    else:
-        return "その他"
+
         
 def extract_video_id(url_or_id):
     url_or_id = url_or_id.strip()
