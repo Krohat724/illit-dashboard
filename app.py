@@ -370,6 +370,20 @@ try:
                         st.altair_chart(pie, use_container_width=True)
                 
                 st.divider()
+
+                # --- ここから追加 ---
+                st.divider()
+                st.subheader("📈 時系列トレンド（再生数の推移）")
+                # dfにはSupabaseから取った全履歴が入っている
+                if not df.empty:
+                    line_chart = alt.Chart(df).mark_line(point=True).encode(
+                        x=alt.X('timestamp:T', title='時間', axis=alt.Axis(format='%m/%d %H:%M')),
+                        y=alt.Y('views:Q', title='累計再生数', scale=alt.Scale(zero=False)),
+                        color=alt.Color('title:N', title='動画タイトル'),
+                        tooltip=['title', 'timestamp', 'views']
+                    ).properties(height=400)
+                    st.altair_chart(line_chart, use_container_width=True)
+                # --- ここまで追加 ---
                 
                 st.subheader("🛠️ 動画の管理 (コンセプト修正・削除)")
                 all_options = list(CONCEPT_KEYWORDS.keys()) + ["その他"]
