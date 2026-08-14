@@ -147,6 +147,10 @@ CONCEPT_KEYWORDS = {
         "rhythm", "funky", "glitter", "disco lights", "studio 54", "saturday night", "boogie", 
         "dance party", "night club", "mirrorball", "sequins", "high heels", "roller derby"
     ]
+    "ラブソング”:[
+        "ラブ”
+    ],
+    
 }
 
 DEFAULT_DATABASE = {
