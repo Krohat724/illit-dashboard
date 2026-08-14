@@ -146,10 +146,11 @@ CONCEPT_KEYWORDS = {
         "disco house", "brass section", "saxophone", "trumpet", "wah guitar", "bassline", "soul", 
         "rhythm", "funky", "glitter", "disco lights", "studio 54", "saturday night", "boogie", 
         "dance party", "night club", "mirrorball", "sequins", "high heels", "roller derby"
-    ]
+    ],
+    
     "ラブソング”:[
         "ラブ"
-    ],
+    ]
     
 }
 
