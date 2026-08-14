@@ -148,7 +148,7 @@ CONCEPT_KEYWORDS = {
         "dance party", "night club", "mirrorball", "sequins", "high heels", "roller derby"
     ],
     
-    "ラブソング”:[
+    "ラブソング":[
         "ラブ"
     ]
     
