@@ -1,8 +1,9 @@
 name: Fetch YouTube Data Cron
 
 on:
-  schedule:
-    - cron: '0 * * * *' # 1時間ごとに実行
+    schedule:
+    - cron: '17 * * * *' # 毎時17分に実行するようにズラす
+
   workflow_dispatch: # 手動実行用ボタンも有効化
 
 jobs:
