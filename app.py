@@ -197,17 +197,64 @@ def save_concept_to_db(video_id, concept, title=""):
     except Exception:
         return False
 
-def delete_video_from_db(video_id):
+# ----------------------------------------------------
+# 確実な部分一致 ＆ 短い英語の厳格判定 ロジック
+# ----------------------------------------------------
+def auto_detect_concept_dict(video_id):
     try:
-        url1 = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_concepts?video_id=eq.{video_id}"
-        res1 = requests.delete(url1, headers=supabase_headers)
+        url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={API_KEY}"
+        res = requests.get(url).json()
         
-        url2 = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?video_id=eq.{video_id}"
-        res2 = requests.delete(url2, headers=supabase_headers)
+        if "items" in res and len(res["items"]) > 0:
+            snippet = res["items"][0]["snippet"]
+            
+            # テキストを小文字化して結合（タイトル ＋ 概要欄）
+            title = snippet.get("title", "").lower()
+            description = snippet.get("description", "").lower()
+            combined_text = f"{title} {description}"
+            
+            # タグリストを小文字化
+            tags = [t.lower() for t in snippet.get("tags", [])]
+            
+            scores = {}
+            for concept, keywords in CONCEPT_KEYWORDS.items():
+                score = 0
+                for kw in keywords:
+                    kw_lower = kw.lower()
+                    
+                    # 英語のみ、かつ3文字以下の短い単語の場合 (例: rap, y2k, sf)
+                    if len(kw_lower) <= 3 and kw_lower.isascii() and kw_lower.isalpha():
+                        # 1. タグと完全一致するか？
+                        if kw_lower in tags:
+                            score += 5
+                        # 2. テキスト内に「スペースで区切られた独立した単語」として存在するか？
+                        # (例: " rap " はOK、"photography" はNG)
+                        elif f" {kw_lower} " in f" {combined_text} ": 
+                            score += 3
+                    
+                    # それ以外の長い単語、または日本語・韓国語の場合
+                    else:
+                        # 1. タグに含まれているか？（部分一致）
+                        if any(kw_lower in t for t in tags):
+                            score += 5
+                        # 2. タイトルや概要欄に含まれているか？（部分一致）
+                        elif kw_lower in combined_text:
+                            score += 1
+                            
+                if score > 0:
+                    scores[concept] = score
+            
+            # スコアが一番高いコンセプトを選ぶ
+            if scores:
+                best_concept = max(scores, key=scores.get)
+                return best_concept, snippet.get("title", "")
+            
+            # どのキーワードにも引っかからなかった場合
+            return "その他", snippet.get("title", "")
+    except Exception as e:
+        st.error(f"解析エラー: {e}")
         
-        return res1.status_code in [200, 204] and res2.status_code in [200, 204]
-    except Exception:
-        return False
+    return "その他", ""
 
 # ----------------------------------------------------
 # 単語境界を用いた厳密なマッチング関数
