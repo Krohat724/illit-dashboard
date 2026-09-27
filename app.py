@@ -391,7 +391,7 @@ if GEMINI_API_KEY:
             with st.spinner("Gemini APIでデータ分析中..."):
                 try:
                     genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel("gemini-2.0-flash")
+                    model = genai.GenerativeModel("gemini-3.8-flash")
                     
                     prompt = f"""
 あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
