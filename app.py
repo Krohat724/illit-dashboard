@@ -100,39 +100,59 @@ if not yt_data:
 # ==========================================
 # 機能 1: 公開後スピード比較（初速相対グラフ）
 # ==========================================
-st.header("1. 🚀 公開後スピード比較（初速相対グラフ）")
+st.header("1. 🚀 公開後スピード比較（初速ペース分析）")
 
-if not df_all.empty:
+if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
+    # 選択されている動画IDのデータだけを抽出
     df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
     
-    # published_at が存在するかチェック
-    if 'published_at' in df_filtered.columns and not df_filtered['published_at'].isnull().all():
-        # 日時型変換 (UTC統一)
+    if not df_filtered.empty and 'published_at' in df_filtered.columns:
+        # 日時データをUTC型に統一変換
         df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
         df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
         
-        # 経過時間（Hours）の計算: (取得日時 - 公開日時) の秒数 ÷ 3600
-        df_filtered['elapsed_hours'] = (df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600
+        # ★【心臓部】経過時間の計算 (取得日時 - 公開日時)
+        df_filtered['elapsed_hours'] = ((df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600).round(1)
         df_filtered['elapsed_days'] = (df_filtered['elapsed_hours'] / 24).round(1)
         
-        # X軸の切り替えオプション
-        unit = st.radio("X軸の単位を選択しろ", ["公開後の経過時間 (Hours)", "公開後の経過日数 (Days)"], horizontal=True)
-        x_col = 'elapsed_hours' if "Hours" in unit else 'elapsed_days'
-        x_label = '公開からの経過時間 (時間)' if "Hours" in unit else '公開からの経過日数 (日)'
+        # グラフの表示設定UI
+        col_unit, col_metric = st.columns(2)
+        with col_unit:
+            unit_choice = st.radio("X軸の単位を選択", ["経過時間 (Hours)", "経過日数 (Days)"], horizontal=True)
+        with col_metric:
+            y_choice = st.selectbox("Y軸の指標", ["views", "likes", "comments"], format_func=lambda x: {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[x])
 
-        # Altairで公開後の経過時間X軸グラフを描画
-        chart = alt.Chart(df_filtered).mark_line(point=True).encode(
-            x=alt.X(f'{x_col}:Q', title=x_label),
-            y=alt.Y('views:Q', title='再生回数', scale=alt.Scale(zero=True)),
-            color=alt.Color('title:N', title='動画タイトル'),
-            tooltip=['title', f'{x_col}:Q', 'views']
-        ).properties(height=380).interactive()
+        x_col = 'elapsed_hours' if "Hours" in unit_choice else 'elapsed_days'
+        x_label = '公開からの経過時間 (時間)' if "Hours" in unit_choice else '公開からの経過日数 (日)'
+        y_label = {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[y_choice]
+
+        # ★ Plotlyによるインタラクティブな初速比較グラフ
+        fig = px.line(
+            df_filtered,
+            x=x_col,
+            y=y_choice,
+            color='title',
+            markers=True,
+            title=f"🔥 動画公開後の{y_label}成長スピード比較",
+            labels={
+                x_col: x_label,
+                y_choice: y_label,
+                'title': '動画タイトル'
+            }
+        )
         
-        st.altair_chart(chart, use_container_width=True)
+        # Y軸を必ず0からスタートさせ、見やすく調整
+        fig.update_yaxes(rangemode="tozero")
+        fig.update_layout(
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("💡 `published_at`（公開日時）の入ったデータがまだ蓄積されていない。`update_data.py` の次回実行を待つか、データを取得しろ。")
+        st.info("💡 公開日時（`published_at`）のデータが含まれていません。YouTube APIからのデータ取得を確認してください。")
 else:
-    st.warning("蓄積データが存在しない。")
+    st.warning("⚠️ 表示できる蓄積データがありません。サイドバーに動画URLを入力してください。")
 
 # ==========================================
 # 機能 2 & 3: 熱意度指数 & 初速マトリクス
