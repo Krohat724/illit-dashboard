@@ -126,10 +126,10 @@ def load_supabase_data():
 # ==========================================
 # 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
 # ==========================================
-st.sidebar.title("🎯 競合トラッキング設定")
+st.sidebar.title(" 競合トラッキング設定")
 
-# 🔄 手動更新ボタン（押すとキャッシュをクリアして最新データをYouTubeから再取得）
-if st.sidebar.button("🔄 最新データに手動更新", use_container_width=True):
+#  手動更新ボタン（押すとキャッシュをクリアして最新データをYouTubeから再取得）
+if st.sidebar.button(" 最新データに手動更新", use_container_width=True):
     st.cache_data.clear()
     st.sidebar.success("最新データを再取得しました！")
 
@@ -378,7 +378,7 @@ if not matrix_df.empty:
 # ==========================================
 # 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
 # ==========================================
-st.subheader("🤖 AI競合診断 ＆ PDFレポート自動出力")
+st.subheader(" AI競合診断 ＆ PDFレポート自動出力")
 
 # Session State でAI生成レポートを画面内に保持（他の操作をしても消えない）
 if "ai_report_text" not in st.session_state:
@@ -387,7 +387,7 @@ if "ai_report_text" not in st.session_state:
 if GEMINI_API_KEY:
     col_ai1, col_ai2 = st.columns([1, 3])
     with col_ai1:
-        if st.button("✨ Gemini AI で分析レポート生成", use_container_width=True):
+        if st.button(" Gemini AI で分析レポート生成", use_container_width=True):
             with st.spinner("Gemini APIでデータ分析中..."):
                 try:
                     genai.configure(api_key=GEMINI_API_KEY)
@@ -418,11 +418,11 @@ if GEMINI_API_KEY:
     if st.session_state.ai_report_text:
         st.markdown(st.session_state.ai_report_text)
 else:
-    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
+    st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
 
 # --- レポート出力（HTML/PDF印刷対応）機能 ---
 st.divider()
-st.markdown("📄 **分析結果のエグゼクティブ・レポート出力**")
+st.markdown(" **分析結果のエグゼクティブ・レポート出力**")
 
 # HTMLレポートの動的生成
 report_html = f"""
@@ -441,7 +441,7 @@ report_html = f"""
     </style>
 </head>
 <body>
-    <h1>🔥 競合MVバズ解析 ＆ 伸び推移レポート</h1>
+    <h1> 競合MVバズ解析 ＆ 伸び推移レポート</h1>
     <p>出力日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
     
     <h2>1. 比較動画データサマリー</h2>
@@ -484,7 +484,7 @@ report_html += f"""
 col_pdf, col_txt = st.columns(2)
 with col_pdf:
     st.download_button(
-        label="📥 分析レポート（PDF/印刷用HTML）をダウンロード",
+        label=" 分析レポート（PDF/印刷用HTML）をダウンロード",
         data=report_html,
         file_name=f"VPH_Analytics_Report_{datetime.now().strftime('%Y%m%d')}.html",
         mime="text/html"
@@ -492,7 +492,7 @@ with col_pdf:
 
 with col_txt:
     st.download_button(
-        label="📝 AIレポート（テキスト版）をダウンロード",
+        label=" AIレポート（テキスト版）をダウンロード",
         data=st.session_state.ai_report_text if st.session_state.ai_report_text else "AIレポート未生成",
         file_name=f"AI_Report_{datetime.now().strftime('%Y%m%d')}.txt",
         mime="text/plain"
