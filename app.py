@@ -164,7 +164,7 @@ selected_video_title = st.selectbox("AI解析を行う動画を選択しろ", df
 selected_video_id = df_metrics[df_metrics["タイトル"] == selected_video_title]["video_id"].values[0]
 
 if st.button("最新50件のコメントをGeminiで解析する"):
-    with st.spinner("YouTubeコメントを取得し、Gemini 2.5 Flashで解析中..."):
+    with st.spinner("YouTubeコメントを取得し、Geminiで解析中..."):
         comment_url = f"https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={selected_video_id}&maxResults=50&key={API_KEY}"
         c_res = requests.get(comment_url).json()
         
@@ -182,37 +182,40 @@ if st.button("最新50件のコメントをGeminiで解析する"):
 【コメント一覧】
 """ + "\n".join(comments_text)
 
-            # Gemini API呼び出し (構造化出力)
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=CommentAnalysisResponse,
-                    temperature=0.2,
-                ),
-            )
-            
-            # Pydanticモデルへパース
-            ai_res = CommentAnalysisResponse.model_validate_json(response.text)
-            
-            st.session_state['ai_analysis'] = ai_res
-            st.session_state['ai_target_title'] = selected_video_title
-            
-            st.success("Gemini解析完了！")
-            st.subheader("👍 ファンが褒めているポイント")
-            for pt in ai_res.praise_points:
-                st.write(f"- {pt}")
+            # Gemini API呼び出し (エラー捕捉付き)
+            try:
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash',  # 最も安定している公式モデル
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=CommentAnalysisResponse,
+                        temperature=0.2,
+                    ),
+                )
                 
-            st.subheader("🌍 海外ファンの反応")
-            st.write(ai_res.overseas_reaction)
-            
-            st.subheader("⚠️ 違和感・ネガティブ要素")
-            st.write(ai_res.negative_points)
+                # Pydanticモデルへパース
+                ai_res = CommentAnalysisResponse.model_validate_json(response.text)
+                
+                st.session_state['ai_analysis'] = ai_res
+                st.session_state['ai_target_title'] = selected_video_title
+                
+                st.success("Gemini解析完了！")
+                st.subheader("👍 ファンが褒めているポイント")
+                for pt in ai_res.praise_points:
+                    st.write(f"- {pt}")
+                    
+                st.subheader("🌍 海外ファンの反応")
+                st.write(ai_res.overseas_reaction)
+                
+                st.subheader("⚠️ 違和感・ネガティブ要素")
+                st.write(ai_res.negative_points)
+
+            except Exception as e:
+                # クラッシュさせずに画面上に本当のエラーメッセージを表示する
+                st.error(f"❌ Gemini API実行エラー: {e}")
         else:
             st.warning("コメントが取得できないか、オフになっています。")
-
-st.divider()
 
 # ==========================================
 # 機能 5: ワンクリック「1P分析レポート（PDF）」出力
