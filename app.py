@@ -101,18 +101,20 @@ if not yt_data:
 # ==========================================
 # 機能 1: 公開後スピード比較（初速相対グラフ）
 # ==========================================
-st.header("1.  公開後スピード比較（初速ペース分析）")
+st.header("1. 🚀 公開後スピード比較（初速ペース分析）")
 
 if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
-    # 選択されている動画IDのデータだけを抽出
     df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
     
-    if not df_filtered.empty and 'published_at' in df_filtered.columns:
-        # 日時データをUTC型に統一変換
+    # デバッグ用：dataframeの列と中身を画面に少し出す
+    # st.write("デバッグ - カラム一覧:", df_filtered.columns.tolist())
+    
+    if not df_filtered.empty and 'published_at' in df_filtered.columns and not df_filtered['published_at'].isnull().all():
+        # 日時データをUTC型に統一
         df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
         df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
         
-        # ★【心臓部】経過時間の計算 (取得日時 - 公開日時)
+        # 経過時間の計算
         df_filtered['elapsed_hours'] = ((df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600).round(1)
         df_filtered['elapsed_days'] = (df_filtered['elapsed_hours'] / 24).round(1)
         
@@ -124,36 +126,33 @@ if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
             y_choice = st.selectbox("Y軸の指標", ["views", "likes", "comments"], format_func=lambda x: {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[x])
 
         x_col = 'elapsed_hours' if "Hours" in unit_choice else 'elapsed_days'
-        x_label = '公開からの経過時間 (時間)' if "Hours" in unit_choice else '公開からの経過日数 (日)'
+        x_label = '公開からの経過時間 (時間)' if "Hours" in unit_choice else '経過日数 (日)'
         y_label = {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[y_choice]
 
-        # ★ Plotlyによるインタラクティブな初速比較グラフ
-        fig = px.line(
-            df_filtered,
-            x=x_col,
-            y=y_choice,
-            color='title',
-            markers=True,
-            title=f" 動画公開後の{y_label}成長スピード比較",
-            labels={
-                x_col: x_label,
-                y_choice: y_label,
-                'title': '動画タイトル'
-            }
-        )
-        
-        # Y軸を必ず0からスタートさせ、見やすく調整
-        fig.update_yaxes(rangemode="tozero")
-        fig.update_layout(
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        # データが空でないか最終チェック
+        if df_filtered[y_choice].sum() > 0:
+            fig = px.line(
+                df_filtered,
+                x=x_col,
+                y=y_choice,
+                color='title',
+                markers=True,
+                title=f"🔥 動画公開後の{y_label}成長スピード比較",
+                labels={x_col: x_label, y_choice: y_label, 'title': '動画タイトル'}
+            )
+            fig.update_yaxes(rangemode="tozero")
+            fig.update_layout(
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ 選択された動画の数値データ（再生数など）が0、または正しく取得できていません。")
     else:
-        st.info(" 公開日時（`published_at`）のデータが含まれていません。YouTube APIからのデータ取得を確認してください。")
+        st.warning("⚠️ Supabase内のデータに `published_at`（公開日時）が含まれていないか、値が空です。")
+        st.info("💡 対策: `update_data.py` を実行して、最新の公開日時付きデータをSupabaseに蓄積させてください。")
 else:
-    st.warning(" 表示できる蓄積データがありません。サイドバーに動画URLを入力してください。")
+    st.warning("⚠️ 表示できる蓄積データがありません。サイドバーに動画URLを入力してください。")
 
 # ==========================================
 # 機能 2 & 3: 熱意度指数 & 初速マトリクス
