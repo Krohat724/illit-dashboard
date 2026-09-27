@@ -55,13 +55,13 @@ def fetch_supabase_data():
 # ==========================================
 # メインUI構成
 # ==========================================
-st.title("🔥 K-POP / J-POP 競合リアルタイム分析ダッシュボード")
+st.title(" K-POP / J-POP 競合リアルタイム分析ダッシュボード")
 
 # データベースから全履歴を取得
 df_all = fetch_supabase_data()
 
 # --- サイドバー：比較対象動画の入力（3〜5本） ---
-st.sidebar.header("🎯 比較対象動画の設定 (3〜5本)")
+st.sidebar.header("比較対象動画の設定 (3〜5本)")
 url_inputs = [
     st.sidebar.text_input(f"動画 URL #{i+1}", key=f"url_{i}")
     for i in range(5)
@@ -86,7 +86,7 @@ if video_ids:
 # ★─────────────────────────────────────────────────────────────────★
 
 if len(video_ids) < 1:
-    st.info("👈 左側のサイドバーに、比較したいYouTube動画のURLを少なくとも1本以上入力しろ。")
+    st.info("左側のサイドバーに、比較したいYouTube動画のURLを少なくとも1本以上入力しろ。")
     st.stop()
 
 # --- 比較動画データのYouTube API一括取得 ---
@@ -101,7 +101,7 @@ if not yt_data:
 # ==========================================
 # 機能 1: 公開後スピード比較（初速相対グラフ）
 # ==========================================
-st.header("1. 🚀 公開後スピード比較（初速ペース分析）")
+st.header("1.  公開後スピード比較（初速ペース分析）")
 
 if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
     # 選択されている動画IDのデータだけを抽出
@@ -134,7 +134,7 @@ if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
             y=y_choice,
             color='title',
             markers=True,
-            title=f"🔥 動画公開後の{y_label}成長スピード比較",
+            title=f" 動画公開後の{y_label}成長スピード比較",
             labels={
                 x_col: x_label,
                 y_choice: y_label,
@@ -151,9 +151,9 @@ if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("💡 公開日時（`published_at`）のデータが含まれていません。YouTube APIからのデータ取得を確認してください。")
+        st.info(" 公開日時（`published_at`）のデータが含まれていません。YouTube APIからのデータ取得を確認してください。")
 else:
-    st.warning("⚠️ 表示できる蓄積データがありません。サイドバーに動画URLを入力してください。")
+    st.warning(" 表示できる蓄積データがありません。サイドバーに動画URLを入力してください。")
 
 # ==========================================
 # 機能 2 & 3: 熱意度指数 & 初速マトリクス
@@ -196,11 +196,11 @@ for item in yt_data:
 df_metrics = pd.DataFrame(metrics_list)
 
 with col_left:
-    st.header("2. 🔥 ファンダム熱意度指数")
+    st.header("2.  ファンダム熱意度指数")
     st.dataframe(df_metrics[["タイトル", "総再生数", "エンゲージメント率", "熱量ランク"]], use_container_width=True)
 
 with col_right:
-    st.header("3. ⏰ 投稿時間帯・公開タイミング")
+    st.header("3.  投稿時間帯・公開タイミング")
     st.dataframe(df_metrics[["タイトル", "公開日時"]], use_container_width=True)
 
 st.divider()
@@ -208,7 +208,7 @@ st.divider()
 # ==========================================
 # 機能 4: Gemini AIコメント感情＆バズ要因サマリー
 # ==========================================
-st.header("4. 🤖 Gemini AIコメント感情 & バズ要因分析")
+st.header("4.  Gemini AIコメント感情 & バズ要因分析")
 
 selected_video_title = st.selectbox("AI解析を行う動画を選択しろ", df_metrics["タイトル"].tolist())
 selected_video_id = df_metrics[df_metrics["タイトル"] == selected_video_title]["video_id"].values[0]
@@ -251,14 +251,14 @@ if st.button("最新50件のコメントをGeminiで解析する"):
                 st.session_state['ai_target_title'] = selected_video_title
                 
                 st.success("Gemini解析完了！")
-                st.subheader("👍 ファンが褒めているポイント")
+                st.subheader(" ファンが褒めているポイント")
                 for pt in ai_res.praise_points:
                     st.write(f"- {pt}")
                     
-                st.subheader("🌍 海外ファンの反応")
+                st.subheader(" 海外ファンの反応")
                 st.write(ai_res.overseas_reaction)
                 
-                st.subheader("⚠️ 違和感・ネガティブ要素")
+                st.subheader(" 違和感・ネガティブ要素")
                 st.write(ai_res.negative_points)
 
             except Exception as e:
@@ -320,14 +320,14 @@ def generate_pdf(df_m, ai_data, ai_title):
     buffer.seek(0)
     return buffer
 
-if st.button("📄 1Pレポート（PDF）を発行・ダウンロード"):
+if st.button(" 1Pレポート（PDF）を発行・ダウンロード"):
     ai_data = st.session_state.get('ai_analysis', None)
     ai_title = st.session_state.get('ai_target_title', "")
     
     pdf_buffer = generate_pdf(df_metrics, ai_data, ai_title)
     
     st.download_button(
-        label="📥 今すぐPDFをダウンロードしろ",
+        label=" 今すぐPDFをダウンロードしろ",
         data=pdf_buffer,
         file_name=f"KPOP_Analysis_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
         mime="application/pdf"
