@@ -4,15 +4,15 @@ import pandas as pd
 import altair as alt
 import re
 import io
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 # ReportLab (PDF生成用)
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.lib import colors
 
 # --- 1. 初期設定 & APIクライアント ---
 st.set_page_config(page_title="K-POP/J-POP 競合分析SaaS", layout="wide")
@@ -20,9 +20,10 @@ st.set_page_config(page_title="K-POP/J-POP 競合分析SaaS", layout="wide")
 API_KEY = st.secrets["YOUTUBE_API_KEY"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Gemini Clientの初期化
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -87,7 +88,6 @@ if not yt_data:
 st.header("1. 📈 複合VPH（1時間あたりの再生増加数）推移")
 
 if not df_all.empty:
-    # 選択されたIDのみフィルタリング
     df_filtered = df_all[df_all['video_id'].isin(video_ids)].sort_values('timestamp')
     
     if not df_filtered.empty:
@@ -156,16 +156,15 @@ with col_right:
 st.divider()
 
 # ==========================================
-# 機能 4: AIコメント感情＆バズ要因サマリー
+# 機能 4: Gemini AIコメント感情＆バズ要因サマリー
 # ==========================================
-st.header("4. 🤖 AIコメント感情 & バズ要因分析")
+st.header("4. 🤖 Gemini AIコメント感情 & バズ要因分析")
 
 selected_video_title = st.selectbox("AI解析を行う動画を選択しろ", df_metrics["タイトル"].tolist())
 selected_video_id = df_metrics[df_metrics["タイトル"] == selected_video_title]["video_id"].values[0]
 
-if st.button("最新50件のコメントをAI解析する"):
-    with st.spinner("YouTubeコメントを取得し、gpt-4o-miniで解析中..."):
-        # YouTube Comment API呼び出し
+if st.button("最新50件のコメントをGeminiで解析する"):
+    with st.spinner("YouTubeコメントを取得し、Gemini 2.5 Flashで解析中..."):
         comment_url = f"https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={selected_video_id}&maxResults=50&key={API_KEY}"
         c_res = requests.get(comment_url).json()
         
@@ -176,24 +175,31 @@ if st.button("最新50件のコメントをAI解析する"):
                 comments_text.append(text)
         
         if comments_text:
-            prompt = f"以下のYouTube動画のコメント50件を解析し、定型フォーマットで出力しろ。\n\n" + "\n".join(comments_text)
-            
-            completion = client.beta.chat.completions.parse(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "あなたはエンタメ市場のデータアナリストです。"},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format=CommentAnalysisResponse,
-                temperature=0.2
+            prompt = f"""
+あなたはエンタメ市場のデータアナリストです。
+以下のYouTube動画のコメント50件を分析し、ファンの反響ポイント、海外ファンの反応、ネガティブ要素を整理してください。
+
+【コメント一覧】
+""" + "\n".join(comments_text)
+
+            # Gemini API呼び出し (構造化出力)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=CommentAnalysisResponse,
+                    temperature=0.2,
+                ),
             )
             
-            ai_res = completion.choices[0].message.parsed
+            # Pydanticモデルへパース
+            ai_res = CommentAnalysisResponse.model_validate_json(response.text)
             
             st.session_state['ai_analysis'] = ai_res
             st.session_state['ai_target_title'] = selected_video_title
             
-            st.success("解析完了！")
+            st.success("Gemini解析完了！")
             st.subheader("👍 ファンが褒めているポイント")
             for pt in ai_res.praise_points:
                 st.write(f"- {pt}")
@@ -225,18 +231,14 @@ def generate_pdf(df_m, ai_data, ai_title):
     p.drawString(40, height - 65, f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     p.line(40, height - 75, width - 40, height - 75)
     
-    # 競合指標テーブル描画
+    # 1. パフォーマンス指標
     y = height - 100
     p.setFont("Helvetica-Bold", 12)
     p.drawString(40, y, "1. Performance & Engagement Metrics")
     y -= 20
     
     p.setFont("Helvetica", 9)
-    p.drawString(40, y, "Title / Views / ER / Rank")
-    y -= 15
-    
     for _, row in df_m.iterrows():
-        # 英数字以外の文字コードエラー回避のための簡易フィルター
         safe_title = row['タイトル'].encode('ascii', 'ignore').decode('ascii')
         if not safe_title: safe_title = f"Video ID: {row['video_id']}"
         
@@ -244,9 +246,10 @@ def generate_pdf(df_m, ai_data, ai_title):
         p.drawString(50, y, line)
         y -= 15
         
+    # 2. AIコメント解析
     y -= 20
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "2. AI Comment Sentiment Summary")
+    p.drawString(40, y, "2. Gemini AI Comment Sentiment Summary")
     y -= 20
     
     p.setFont("Helvetica", 9)
