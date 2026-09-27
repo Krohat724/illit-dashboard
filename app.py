@@ -6,6 +6,19 @@ import re
 import os
 import altair as alt
 
+from typing import Optional
+from openai import OpenAI
+from pydantic import BaseModel, Field
+
+# StreamlitのSecretsからOpenAI APIキーを読み込んで初期化
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+
+# Pydanticモデルの定義
+class KpopCheckResponse(BaseModel):
+    is_kpop: bool = Field(description="動画がK-POPに関連している場合はTrue、そうでない場合はFalse")
+    group_name: Optional[str] = Field(description="該当するK-POPアーティスト・グループ名（特定できない場合やK-POPでない場合はNone）")
+    confidence: float = Field(description="判定の確信度（0.0 から 1.0 の数値）")
+
 st.set_page_config(page_title="エンタメトレンド分析 SaaS", layout="wide")
 
 st.title("MV トレンド覇権ダッシュボード (MVP)")
@@ -207,52 +220,32 @@ def auto_detect_concept_dict(video_id):
         
         if "items" in res and len(res["items"]) > 0:
             snippet = res["items"][0]["snippet"]
+            title = snippet.get("title", "")
+            description = snippet.get("description", "")
             
-            # テキストを小文字化して結合（タイトル ＋ 概要欄）
-            title = snippet.get("title", "").lower()
-            description = snippet.get("description", "").lower()
-            combined_text = f"{title} {description}"
+            # gpt-4o-mini に渡して解析
+            completion = client.beta.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "あなたはK-POPエンタメ業界に詳しいデータアナリストAIです。与えられた動画のタイトルと概要欄から、K-POP関連かどうかとグループ名を判定してください。"},
+                    {"role": "user", "content": f"【タイトル】\n{title}\n\n【概要欄】\n{description[:1000]}"},
+                ],
+                response_format=KpopCheckResponse,
+                temperature=0.0
+            )
             
-            # タグリストを小文字化
-            tags = [t.lower() for t in snippet.get("tags", [])]
+            result = completion.choices[0].message.parsed
             
-            scores = {}
-            for concept, keywords in CONCEPT_KEYWORDS.items():
-                score = 0
-                for kw in keywords:
-                    kw_lower = kw.lower()
-                    
-                    # 英語のみ、かつ3文字以下の短い単語の場合 (例: rap, y2k, sf)
-                    if len(kw_lower) <= 3 and kw_lower.isascii() and kw_lower.isalpha():
-                        # 1. タグと完全一致するか？
-                        if kw_lower in tags:
-                            score += 5
-                        # 2. テキスト内に「スペースで区切られた独立した単語」として存在するか？
-                        # (例: " rap " はOK、"photography" はNG)
-                        elif f" {kw_lower} " in f" {combined_text} ": 
-                            score += 3
-                    
-                    # それ以外の長い単語、または日本語・韓国語の場合
-                    else:
-                        # 1. タグに含まれているか？（部分一致）
-                        if any(kw_lower in t for t in tags):
-                            score += 5
-                        # 2. タイトルや概要欄に含まれているか？（部分一致）
-                        elif kw_lower in combined_text:
-                            score += 1
-                            
-                if score > 0:
-                    scores[concept] = score
-            
-            # スコアが一番高いコンセプトを選ぶ
-            if scores:
-                best_concept = max(scores, key=scores.get)
-                return best_concept, snippet.get("title", "")
-            
-            # どのキーワードにも引っかからなかった場合
-            return "その他", snippet.get("title", "")
+            # K-POPと判定され、かつグループ名が特定できた場合
+            if result.is_kpop and result.group_name:
+                return result.group_name, title
+            elif result.is_kpop:
+                return "K-POP（グループ不明）", title
+            else:
+                return "その他", title
+
     except Exception as e:
-        st.error(f"解析エラー: {e}")
+        st.error(f"OpenAI解析エラー: {e}")
         
     return "その他", ""
 
