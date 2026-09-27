@@ -249,9 +249,9 @@ else:
     st.stop()
 
 # ==========================================
-# 機能 1: 📊 2軸スピード比較（Lifetime VPH vs 現在モメンタム）
+# 機能 1:  2軸スピード比較（Lifetime VPH vs 現在モメンタム）
 # ==========================================
-st.subheader("1. 📊 2軸スピード比較（Lifetime VPH × 現在モメンタム）")
+st.subheader("1.  2軸スピード比較（Lifetime VPH × 現在モメンタム）")
 st.markdown("""
 * **Lifetime VPH**: 公開から現在までの平均時速（過去動画同士の公平な速度基準）
 * **現在モメンタム VPH**: ツール登録後のリアルタイムの勢い（今バズっているか）
@@ -354,7 +354,7 @@ if GEMINI_API_KEY:
         with st.spinner("Gemini APIでデータ分析中..."):
             try:
                 genai.configure(api_key=GEMINI_API_KEY)
-                model = genai.GenerativeModel("gemini-2.0-flash")
+                model = genai.GenerativeModel("gemini-3.8-flash")
                 
                 prompt = f"""
 あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
