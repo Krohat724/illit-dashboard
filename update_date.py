@@ -1,71 +1,53 @@
 import os
+import requests
 from datetime import datetime, timezone
-from googleapiclient.discovery import build
 from supabase import create_client, Client
 
-# ==========================================
-# 1. 環境変数・クライアント初期化
-# ==========================================
+# --- 環境変数 ---
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-# Supabase & YouTube クライアント作成
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-# 追跡対象の動画IDリスト（例）
+# 追跡対象の動画IDリスト（※必要に応じて追加・変更しろ）
 TARGET_VIDEO_IDS = [
-    "UCn...",  # 追跡したい動画IDを入れる
-    "...",
+    "UCn...",  # 追跡したいYouTube動画ID
 ]
 
-def fetch_and_save_video_stats():
+def fetch_and_save():
     if not TARGET_VIDEO_IDS:
-        print("追跡対象の動画IDが設定されていません。")
+        print("動画IDが設定されていません。")
         return
 
-    # ==========================================
-    # 2. YouTube APIからデータ取得 (snippet と statistics を同時取得)
-    # ==========================================
-    # ★ポイント: part に "snippet,statistics" を指定する！
-    response = youtube.videos().list(
-        part="snippet,statistics",
-        id=",".join(TARGET_VIDEO_IDS)
-    ).execute()
-
+    ids_str = ",".join(TARGET_VIDEO_IDS)
+    # ★ partに snippet,statistics を指定して公開日時(publishedAt)も同時に取得
+    url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={ids_str}&key={YOUTUBE_API_KEY}"
+    
+    res = requests.get(url).json()
+    items = res.get("items", [])
+    
+    current_time = datetime.now(timezone.utc).isoformat()
     records = []
-    # 現在時刻（UTC）を取得
-    current_timestamp = datetime.now(timezone.utc).isoformat()
 
-    for item in response.get("items", []):
-        video_id = item["id"]
+    for item in items:
+        v_id = item["id"]
         stats = item.get("statistics", {})
         snippet = item.get("snippet", {})
+        
+        records.append({
+            "video_id": v_id,
+            "title": snippet.get("title", ""),
+            "views": int(stats.get("viewCount", 0)),
+            "likes": int(stats.get("likeCount", 0)),
+            "comments": int(stats.get("commentCount", 0)),
+            "timestamp": current_time,                  # データ取得日時
+            "published_at": snippet.get("publishedAt") # ★動画の公開日時
+        })
 
-        # ★ポイント: snippet から公開日時 (publishedAt) を取得
-        published_at = snippet.get("publishedAt")
-
-        # 登録用データオブジェクトの作成
-        record = {
-            "video_id": video_id,
-            "title": snippet.get("title", ""),  # 動画タイトルも一緒に保存しておくと便利
-            "view_count": int(stats.get("viewCount", 0)),
-            "like_count": int(stats.get("likeCount", 0)),
-            "comment_count": int(stats.get("commentCount", 0)),
-            "timestamp": current_timestamp,      # データ取得日時
-            "published_at": published_at         # ★追加: 動画の公開日時
-        }
-        records.append(record)
-
-    # ==========================================
-    # 3. Supabaseにデータ挿入 (Insert)
-    # ==========================================
     if records:
-        data, count = supabase.table("multi_video_stats").insert(records).execute()
-        print(f"[{current_timestamp}] {len(records)}件のデータをSupabaseに保存完了！")
-    else:
-        print("取得できた動画データがありませんでした。")
+        supabase.table("multi_video_stats").insert(records).execute()
+        print(f"[{current_time}] {len(records)}件のデータを保存完了！")
 
 if __name__ == "__main__":
-    fetch_and_save_video_stats()
+    fetch_and_save()
