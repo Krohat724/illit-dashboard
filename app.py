@@ -13,7 +13,6 @@ import google.generativeai as genai
 # ==========================================
 st.set_page_config(
     page_title="競合VPH & Launch Tracker SaaS",
-    page_icon="🚀",
     layout="wide"
 )
 
@@ -114,7 +113,7 @@ def load_supabase_data():
 # ==========================================
 # 2. サイドバー：比較対象の設定 & 自動登録
 # ==========================================
-st.sidebar.title("🎯 競合トラッキング設定")
+st.sidebar.title(" 競合トラッキング設定")
 st.sidebar.markdown("監視したい競合MVのURLを入力してください（最大5本）")
 
 url_inputs = [
@@ -138,7 +137,7 @@ if video_ids and SUPABASE_URL and SUPABASE_KEY:
 # ==========================================
 # 3. メイン画面ヘッダー
 # ==========================================
-st.title("🔥 K-POP/J-POP 競合VPH & Launch Analytics")
+st.title(" K-POP/J-POP 競合VPH & Launch Analytics")
 st.caption("リアルタイムモメンタム × 投稿日時勝ちパターン分析 SaaS")
 
 df_all = load_supabase_data()
@@ -246,7 +245,7 @@ for v_id in video_ids:
 if summary_data:
     df_summary = pd.DataFrame(summary_data)
 else:
-    st.warning("⚠️ データの取得に失敗したか、有効なYouTube URLではありません。")
+    st.warning(" データの取得に失敗したか、有効なYouTube URLではありません。")
     st.stop()
 
 # ==========================================
@@ -284,9 +283,9 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("##### 🚀 モメンタム判定")
+    st.markdown("#####  モメンタム判定")
     for _, row in df_summary.iterrows():
-        status = "🔥 急加速中" if row['momentum_ratio'] > 1.2 else ("📉 減速傾向" if row['momentum_ratio'] < 0.8 else "➡️ 安定維持")
+        status = " 急加速中" if row['momentum_ratio'] > 1.2 else ("📉 減速傾向" if row['momentum_ratio'] < 0.8 else "➡️ 安定維持")
         st.write(f"**{row['title'][:15]}...**")
         st.caption(f"現在の勢い: **{row['momentum_ratio']}倍** ({status})")
         st.write(f"・現在時速: `{row['current_vph']:,} VPH`")
@@ -294,31 +293,31 @@ with col2:
         st.divider()
 
 # ==========================================
-# 機能 2: 🚀 競合新曲「事前登録・自動監視（Launch Tracker）」
+# 機能 2:  競合新曲「事前登録・自動監視（Launch Tracker）」
 # ==========================================
-st.subheader("2. 🚀 競合新曲 Launch Tracker（初速レーダー）")
+st.subheader("2.  競合新曲 Launch Tracker（初速レーダー）")
 st.caption("公開直後（72時間以内）の新曲MVを自動検知し、初期ロケットスタート速度を追跡")
 
 df_new_releases = df_summary[df_summary['lifetime_hours'] <= 72]
 
 if not df_new_releases.empty:
-    st.success(f"🎯 追跡中の対象に **{len(df_new_releases)}本** の新曲（公開72時間以内）を検知しました！")
+    st.success(f" 追跡中の対象に **{len(df_new_releases)}本** の新曲（公開72時間以内）を検知しました！")
     cols = st.columns(len(df_new_releases))
     for idx, (_, row) in enumerate(df_new_releases.iterrows()):
         with cols[idx % len(cols)]:
             st.metric(
-                label=f"🆕 {row['title'][:18]}...",
+                label=f" {row['title'][:18]}...",
                 value=f"{row['views']:,} 回",
                 delta=f"初速 {row['lifetime_vph']:,} VPH"
             )
-            st.caption(f"📅 公開: {row['published_at_jst'].strftime('%m/%d %H:%M')} (経過: {row['lifetime_hours']}h)")
+            st.caption(f" 公開: {row['published_at_jst'].strftime('%m/%d %H:%M')} (経過: {row['lifetime_hours']}h)")
 else:
-    st.info("💡 現在、選択されたURLの中に公開72時間以内の『新曲』はありません。これから公開される新曲MVのURLを登録しておくと、公開0分目からの完全な初速VPHが蓄積されます。")
+    st.info(" 現在、選択されたURLの中に公開72時間以内の『新曲』はありません。これから公開される新曲MVのURLを登録しておくと、公開0分目からの完全な初速VPHが蓄積されます。")
 
 # ==========================================
-# 機能 3: 📅 投稿日時 × バズ速度マトリクス（Publishing Matrix）
+# 機能 3:  投稿日時 × バズ速度マトリクス（Publishing Matrix）
 # ==========================================
-st.subheader("3. 📅 投稿日時 × バズ速度（JST 勝ちパターン分析）")
+st.subheader("3.  投稿日時 × バズ速度（JST 勝ちパターン分析）")
 st.markdown("競合動画の `公開曜日` と `公開時間帯（日本時間 JST）` を分析し、**どのタイミングで出された動画が最も高い Lifetime VPH を記録しているか** を可視化します。")
 
 days_jp = {'Monday':'月', 'Tuesday':'火', 'Wednesday':'水', 'Thursday':'木', 'Friday':'金', 'Saturday':'土', 'Sunday':'日'}
@@ -342,13 +341,13 @@ if not matrix_df.empty:
     st.plotly_chart(fig_matrix, use_container_width=True)
     
     best_row = df_summary.loc[df_summary['lifetime_vph'].idxmax()]
-    st.success(f"🏆 **競合の最高ヒットタイミング分析結果**\n\n"
+    st.success(f" **競合の最高ヒットタイミング分析結果**\n\n"
                f"最も高い初速・バズ速度（`{best_row['lifetime_vph']:,} VPH`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['title']}`）です！")
 
 # ==========================================
 # 5. Gemini API による自動AI競合レポート生成
 # ==========================================
-st.subheader("🤖 Gemini AI による競合モメンタム診断レポート")
+st.subheader("Gemini AI による競合モメンタム診断レポート")
 
 if GEMINI_API_KEY:
     if st.button("AI解説レポートを生成する"):
@@ -377,4 +376,4 @@ if GEMINI_API_KEY:
             except Exception as e:
                 st.error(f"Gemini API実行エラー: {e}")
 else:
-    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断レポート機能が有効化されます。")
+    st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断レポート機能が有効化されます。")
