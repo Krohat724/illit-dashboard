@@ -83,27 +83,41 @@ if not yt_data:
     st.stop()
 
 # ==========================================
-# 機能 1: 複合VPHリアルタイム比較グラフ
+# 機能 1: 公開後スピード比較（初速相対グラフ）
 # ==========================================
-st.header("1. 📈 複合VPH（1時間あたりの再生増加数）推移")
+st.header("1. 🚀 公開後スピード比較（初速相対グラフ）")
 
 if not df_all.empty:
-    df_filtered = df_all[df_all['video_id'].isin(video_ids)].sort_values('timestamp')
+    df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
     
-    if not df_filtered.empty:
-        # VPH（1時間あたりの増分）を計算
-        df_filtered['vph'] = df_filtered.groupby('video_id')['views'].diff().fillna(0)
+    # published_at が存在するかチェック
+    if 'published_at' in df_filtered.columns and not df_filtered['published_at'].isnull().all():
+        # 日時型変換 (UTC統一)
+        df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
+        df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
         
-        vph_chart = alt.Chart(df_filtered).mark_line(point=True).encode(
-            x=alt.X('timestamp:T', title='日時', axis=alt.Axis(format='%m/%d %H:%M')),
-            y=alt.Y('vph:Q', title='VPH (1時間あたりの再生増加量)'),
+        # 経過時間（Hours）の計算: (取得日時 - 公開日時) の秒数 ÷ 3600
+        df_filtered['elapsed_hours'] = (df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600
+        df_filtered['elapsed_days'] = (df_filtered['elapsed_hours'] / 24).round(1)
+        
+        # X軸の切り替えオプション
+        unit = st.radio("X軸の単位を選択しろ", ["公開後の経過時間 (Hours)", "公開後の経過日数 (Days)"], horizontal=True)
+        x_col = 'elapsed_hours' if "Hours" in unit else 'elapsed_days'
+        x_label = '公開からの経過時間 (時間)' if "Hours" in unit else '公開からの経過日数 (日)'
+
+        # Altairで公開後の経過時間X軸グラフを描画
+        chart = alt.Chart(df_filtered).mark_line(point=True).encode(
+            x=alt.X(f'{x_col}:Q', title=x_label),
+            y=alt.Y('views:Q', title='再生回数', scale=alt.Scale(zero=True)),
             color=alt.Color('title:N', title='動画タイトル'),
-            tooltip=['title', 'timestamp', 'views', 'vph']
-        ).properties(height=350)
+            tooltip=['title', f'{x_col}:Q', 'views']
+        ).properties(height=380).interactive()
         
-        st.altair_chart(vph_chart, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
     else:
-        st.warning("蓄積データがまだ足りない。自動収集ボットの巡回を待て。")
+        st.info("💡 `published_at`（公開日時）の入ったデータがまだ蓄積されていない。`update_data.py` の次回実行を待つか、データを取得しろ。")
+else:
+    st.warning("蓄積データが存在しない。")
 
 # ==========================================
 # 機能 2 & 3: 熱意度指数 & 初速マトリクス
