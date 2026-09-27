@@ -13,7 +13,6 @@ import google.generativeai as genai
 # ==========================================
 st.set_page_config(
     page_title="競合VPH & Launch Tracker SaaS",
-    page_icon="🚀",
     layout="wide"
 )
 
