@@ -282,8 +282,8 @@ else:
 # ==========================================
 st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
 st.markdown("""
-* **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度（過去動画同士の公平な比較基準）
-* **現在のバズ勢い（直近時速）**: ツール登録後のリアルタイム増加速度（今まさにバズっているか）
+* **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度
+* **現在のバズ勢い（直近時速）**: ツールに登録後のリアルタイム増加速度（今まさにバズっているか）
 """)
 
 col1, col2 = st.columns([2, 1])
@@ -293,14 +293,14 @@ with col1:
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['lifetime_vph'],
-        name='通算ヒットペース (平均時速)',
+        name='平均の伸び具合',
         marker_color='#1f77b4',
         hovertext=df_summary['full_title']
     ))
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
-        name='現在のバズ勢い (直近時速)',
+        name='現在のバズ勢い ',
         marker_color='#ff7f0e',
         hovertext=df_summary['full_title']
     ))
