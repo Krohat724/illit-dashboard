@@ -1,26 +1,24 @@
-name: Fetch YouTube Data Cron
+name: Update Data
 
 on:
-    schedule:
-    - cron: '17 * * * *' # 毎時17分に実行するようにズラす
-  workflow_dispatch: # 手動実行用ボタンも有効化
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:  # ← これが「on:」と同じインデントレベルで入っているか？
 
 jobs:
-  update-data:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          
       - name: Install dependencies
-        run: pip install requests
-        
-      - name: Run script
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase
+      - name: Run update script
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
