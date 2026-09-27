@@ -3,28 +3,41 @@ import requests
 from datetime import datetime, timezone
 from supabase import create_client, Client
 
-# --- 環境変数 ---
+# --- 1. 環境変数の取得 ---
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 追跡対象の動画IDリスト（※必要に応じて追加・変更しろ）
-TARGET_VIDEO_IDS = [
-    "UCn...",  # 追跡したいYouTube動画ID
-]
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
 def fetch_and_save():
-    if not TARGET_VIDEO_IDS:
-        print("動画IDが設定されていません。")
+    # ==========================================
+    # 2. Supabaseから「追跡対象の動画ID」を全取得する
+    # ==========================================
+    get_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/tracked_videos?select=video_id"
+    res_tracked = requests.get(get_url, headers=headers)
+    
+    if res_tracked.status_code != 200 or not res_tracked.json():
+        print("追跡対象の動画IDがSupabaseに1件も登録されていません。Streamlit側でURLを入力してください。")
         return
 
-    ids_str = ",".join(TARGET_VIDEO_IDS)
-    # ★ partに snippet,statistics を指定して公開日時(publishedAt)も同時に取得
-    url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={ids_str}&key={YOUTUBE_API_KEY}"
+    # IDリストを抽出
+    target_video_ids = [item["video_id"] for item in res_tracked.json()]
+    print(f"🎯 追跡対象の動画 ({len(target_video_ids)}件): {target_video_ids}")
+
+    # ==========================================
+    # 3. YouTube APIでデータ一括取得
+    # ==========================================
+    ids_str = ",".join(target_video_ids)
+    yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={ids_str}&key={YOUTUBE_API_KEY}"
     
-    res = requests.get(url).json()
+    res = requests.get(yt_url).json()
     items = res.get("items", [])
     
     current_time = datetime.now(timezone.utc).isoformat()
@@ -41,13 +54,16 @@ def fetch_and_save():
             "views": int(stats.get("viewCount", 0)),
             "likes": int(stats.get("likeCount", 0)),
             "comments": int(stats.get("commentCount", 0)),
-            "timestamp": current_time,                  # データ取得日時
-            "published_at": snippet.get("publishedAt") # ★動画の公開日時
+            "timestamp": current_time,
+            "published_at": snippet.get("publishedAt") # 公開日時
         })
 
+    # ==========================================
+    # 4. Supabaseに蓄積保存
+    # ==========================================
     if records:
         supabase.table("multi_video_stats").insert(records).execute()
-        print(f"[{current_time}] {len(records)}件のデータを保存完了！")
+        print(f"[{current_time}] {len(records)}件のデータを蓄積完了！")
 
 if __name__ == "__main__":
     fetch_and_save()
