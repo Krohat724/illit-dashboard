@@ -69,6 +69,21 @@ url_inputs = [
 active_urls = [u for u in url_inputs if u.strip()]
 video_ids = [extract_video_id(u) for u in active_urls if extract_video_id(u)]
 
+active_urls = [u for u in url_inputs if u.strip()]
+video_ids = [extract_video_id(u) for u in active_urls if extract_video_id(u)]
+
+# ★★★ ここを追加！ 入力された動画IDをSupabaseの追跡リストへ自動登録 ★★★
+if video_ids:
+    for v_id in video_ids:
+        try:
+            # 重複登録を無視して登録するリクエスト
+            track_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/tracked_videos"
+            track_headers = {**headers, "Prefer": "resolution=ignore-duplicates"}
+            requests.post(track_url, headers=track_headers, json={"video_id": v_id})
+        except Exception:
+            pass
+# ★─────────────────────────────────────────────────────────────────★
+
 if len(video_ids) < 1:
     st.info("👈 左側のサイドバーに、比較したいYouTube動画のURLを少なくとも1本以上入力しろ。")
     st.stop()
