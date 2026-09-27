@@ -124,20 +124,35 @@ def load_supabase_data():
     return pd.DataFrame()
 
 # ==========================================
-# 2. サイドバー：一括URL入力（最大15本対応）
+# 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
 # ==========================================
-st.sidebar.title(" 競合トラッキング設定")
+st.sidebar.title("🎯 競合トラッキング設定")
+
+# 🔄 手動更新ボタン（押すとキャッシュをクリアして最新データをYouTubeから再取得）
+if st.sidebar.button("🔄 最新データに手動更新", use_container_width=True):
+    st.cache_data.clear()
+    st.sidebar.success("最新データを再取得しました！")
+
 st.sidebar.markdown("監視したい競合MVのURLを一括入力してください**（最大15本・改行区切り）**")
+
+# Session StateでURL入力内容を記憶（画面更新でも消えない）
+if "saved_urls_text" not in st.session_state:
+    st.session_state.saved_urls_text = ""
 
 urls_text = st.sidebar.text_area(
     "YouTube URL 一括入力",
+    value=st.session_state.saved_urls_text,
     height=180,
-    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=..."
+    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=...",
+    key="url_text_area"
 )
+
+# 入力内容を保存
+st.session_state.saved_urls_text = urls_text
 
 raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
 video_ids = []
-for u in raw_urls[:15]: # 最大15本制限
+for u in raw_urls[:15]:
     v_id = extract_video_id(u)
     if v_id and v_id not in video_ids:
         video_ids.append(v_id)
@@ -361,20 +376,24 @@ if not matrix_df.empty:
                f"最も高い初速・伸び（`{best_row['lifetime_vph']:,} 回/時`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['full_title']}`）です！")
 
 # ==========================================
-# 5. AI自動診断 & PDF・印刷用レポート出力機能
+# 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
 # ==========================================
-st.subheader(" AI競合診断 ＆ PDFレポート自動出力")
+st.subheader("🤖 AI競合診断 ＆ PDFレポート自動出力")
 
-ai_report_text = ""
+# Session State でAI生成レポートを画面内に保持（他の操作をしても消えない）
+if "ai_report_text" not in st.session_state:
+    st.session_state.ai_report_text = ""
 
 if GEMINI_API_KEY:
-    if st.button(" Gemini AI で分析レポートを自動生成する"):
-        with st.spinner("Gemini APIでデータ分析中..."):
-            try:
-                genai.configure(api_key=GEMINI_API_KEY)
-                model = genai.GenerativeModel("gemini-3.8-flash")
-                
-                prompt = f"""
+    col_ai1, col_ai2 = st.columns([1, 3])
+    with col_ai1:
+        if st.button("✨ Gemini AI で分析レポート生成", use_container_width=True):
+            with st.spinner("Gemini APIでデータ分析中..."):
+                try:
+                    genai.configure(api_key=GEMINI_API_KEY)
+                    model = genai.GenerativeModel("gemini-2.0-flash")
+                    
+                    prompt = f"""
 あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
 以下の競合MVパフォーマンスデータを分析し、芸能事務所のマネージャー向けに簡潔で実践的なインサイトレポートを作成してください。
 
@@ -389,17 +408,21 @@ if GEMINI_API_KEY:
 
 専門用語は噛み砕き、箇条書きで分かりやすく出力してください。
 """
-                response = model.generate_content(prompt)
-                ai_report_text = response.text
-                st.markdown(ai_report_text)
-            except Exception as e:
-                st.error(f"Gemini API実行エラー: {e}")
+                    response = model.generate_content(prompt)
+                    # 結果を Session State に保存（画面リロードしても消えない）
+                    st.session_state.ai_report_text = response.text
+                except Exception as e:
+                    st.error(f"Gemini API実行エラー: {e}")
+
+    # AIレポートが生成されていれば表示
+    if st.session_state.ai_report_text:
+        st.markdown(st.session_state.ai_report_text)
 else:
-    st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
+    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
 
 # --- レポート出力（HTML/PDF印刷対応）機能 ---
 st.divider()
-st.markdown("**分析結果のエグゼクティブ・レポート出力**")
+st.markdown("📄 **分析結果のエグゼクティブ・レポート出力**")
 
 # HTMLレポートの動的生成
 report_html = f"""
@@ -415,11 +438,10 @@ report_html = f"""
         table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
         th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
         th {{ background-color: #f2f2f2; }}
-        .badge {{ background-color: #FF4B4B; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }}
     </style>
 </head>
 <body>
-    <h1> 競合MVバズ解析 ＆ 伸び推移レポート</h1>
+    <h1>🔥 競合MVバズ解析 ＆ 伸び推移レポート</h1>
     <p>出力日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
     
     <h2>1. 比較動画データサマリー</h2>
@@ -452,7 +474,7 @@ report_html += f"""
     <h2>2. Gemini AI 競合分析インサイト</h2>
     <div>
         <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 5px;">
-{ai_report_text if ai_report_text else "（AIレポートが未生成です。画面でAI生成ボタンを押すとここに反映されます）"}
+{st.session_state.ai_report_text if st.session_state.ai_report_text else "（AIレポート未生成です）"}
         </pre>
     </div>
 </body>
@@ -462,17 +484,16 @@ report_html += f"""
 col_pdf, col_txt = st.columns(2)
 with col_pdf:
     st.download_button(
-        label=" 分析レポート（PDF/印刷用HTML）をダウンロード",
+        label="📥 分析レポート（PDF/印刷用HTML）をダウンロード",
         data=report_html,
         file_name=f"VPH_Analytics_Report_{datetime.now().strftime('%Y%m%d')}.html",
         mime="text/html"
     )
-    st.caption("※ダウンロードしたファイルを開き、ブラウザの「印刷 ➔ PDFに保存」で綺麗にPDF化できます。")
 
 with col_txt:
     st.download_button(
-        label=" AIレポート（テキスト版）をダウンロード",
-        data=ai_report_text if ai_report_text else "AIレポート未生成",
+        label="📝 AIレポート（テキスト版）をダウンロード",
+        data=st.session_state.ai_report_text if st.session_state.ai_report_text else "AIレポート未生成",
         file_name=f"AI_Report_{datetime.now().strftime('%Y%m%d')}.txt",
         mime="text/plain"
     )
