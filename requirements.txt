@@ -3,3 +3,5 @@ requests
 pandas
 altair
 google-generativeai
+openai
+pydantic
