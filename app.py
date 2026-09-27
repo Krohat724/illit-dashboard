@@ -7,11 +7,12 @@ import os
 import altair as alt
 
 from typing import Optional
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
-# StreamlitのSecretsからOpenAI APIキーを読み込んで初期化
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# StreamlitのSecretsからGEMINI_API_KEYを読み込んで初期化
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Pydanticモデルの定義
 class KpopCheckResponse(BaseModel):
@@ -223,18 +224,29 @@ def auto_detect_concept_dict(video_id):
             title = snippet.get("title", "")
             description = snippet.get("description", "")
             
-            # gpt-4o-mini に渡して解析
-            completion = client.beta.chat.completions.parse(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "あなたはK-POPエンタメ業界に詳しいデータアナリストAIです。与えられた動画のタイトルと概要欄から、K-POP関連かどうかとグループ名を判定してください。"},
-                    {"role": "user", "content": f"【タイトル】\n{title}\n\n【概要欄】\n{description[:1000]}"},
-                ],
-                response_format=KpopCheckResponse,
-                temperature=0.0
+            prompt = f"""
+あなたはK-POPエンタメ業界に詳しいデータアナリストAIです。
+与えられた動画のタイトルと概要欄から、K-POP関連かどうかとグループ名を判定してください。
+
+【タイトル】
+{title}
+
+【概要欄】
+{description[:1000]}
+"""
+            # Gemini APIで構造化出力(JSON)を取得
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=KpopCheckResponse,
+                    temperature=0.0
+                ),
             )
             
-            result = completion.choices[0].message.parsed
+            # レスポンスをPydanticでパース
+            result = KpopCheckResponse.model_validate_json(response.text)
             
             # K-POPと判定され、かつグループ名が特定できた場合
             if result.is_kpop and result.group_name:
