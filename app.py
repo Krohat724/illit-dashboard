@@ -1,30 +1,42 @@
-import streamlit as st
+import os
 import requests
 import pandas as pd
+import numpy as np
 import plotly.express as px
-import altair as alt
-import re
-import io
-from datetime import datetime
-from typing import Optional, List
-from google import genai
-from google.genai import types
-from pydantic import BaseModel, Field
+import plotly.graph_objects as go
+import streamlit as st
+from datetime import datetime, timezone
+import google.generativeai as genai
 
-# ReportLab (PDF生成用)
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+# ==========================================
+# 0. ページ基本設定 & カスタムCSS
+# ==========================================
+st.set_page_config(
+    page_title="競合VPH & Launch Tracker SaaS",
+    page_icon="🚀",
+    layout="wide"
+)
 
-# --- 1. 初期設定 & APIクライアント ---
-st.set_page_config(page_title="K-POP/J-POP 競合分析SaaS", layout="wide")
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 5px solid #FF4B4B;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .stAlert { border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
 
-API_KEY = st.secrets["YOUTUBE_API_KEY"]
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-
-# Gemini Clientの初期化
-client = genai.Client(api_key=GEMINI_API_KEY)
+# ==========================================
+# 1. APIキー & Supabase接続の初期化
+# ==========================================
+YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -32,321 +44,301 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# --- Pydantic定義（機能4: AIコメント解析用） ---
-class CommentAnalysisResponse(BaseModel):
-    praise_points: List[str] = Field(description="ファンが最も褒めているポイント3選")
-    overseas_reaction: str = Field(description="海外ファンからの反応の割合と概要")
-    negative_points: str = Field(description="ネガティブ・違和感のあるコメントの有無と内容")
-
-# --- ユーティリティ関数 ---
+# 動画ID抽出ユーティリティ
 def extract_video_id(url):
-    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-    return match.group(1) if match else None
+    if "v=" in url:
+        return url.split("v=")[1].split("&")[0]
+    elif "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    elif len(url) == 11:
+        return url
+    return None
 
-def fetch_supabase_data():
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200 and res.json():
-        df = pd.DataFrame(res.json())
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        return df
+# YouTube APIから snippet (publishedAt等) を自動キャッシュ取得
+@st.cache_data(ttl=3600)
+def fetch_video_snippets(v_ids, api_key):
+    info_map = {}
+    if not v_ids or not api_key:
+        return info_map
+    try:
+        url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={','.join(v_ids)}&key={api_key}"
+        res = requests.get(url).json()
+        for item in res.get("items", []):
+            snippet = item.get("snippet", {})
+            info_map[item["id"]] = {
+                "title": snippet.get("title", "Unknown"),
+                "published_at": snippet.get("publishedAt"),
+                "channel_title": snippet.get("channelTitle", "Unknown")
+            }
+    except Exception:
+        pass
+    return info_map
+
+# Supabaseから全蓄積データを取得
+@st.cache_data(ttl=60)
+def load_supabase_data():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return pd.DataFrame()
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json())
+            return df
+    except Exception:
+        pass
     return pd.DataFrame()
 
 # ==========================================
-# メインUI構成
+# 2. サイドバー：比較対象の設定 & 自動登録
 # ==========================================
-st.title(" K-POP / J-POP 競合リアルタイム分析ダッシュボード")
+st.sidebar.title("🎯 競合トラッキング設定")
+st.sidebar.markdown("監視したい競合MVのURLを入力してください（最大5本）")
 
-# データベースから全履歴を取得
-df_all = fetch_supabase_data()
-
-# --- サイドバー：比較対象動画の入力（3〜5本） ---
-st.sidebar.header("比較対象動画の設定 (3〜5本)")
 url_inputs = [
-    st.sidebar.text_input(f"動画 URL #{i+1}", key=f"url_{i}")
+    st.sidebar.text_input(f"動画URL #{i+1}", key=f"url_{i}") 
     for i in range(5)
 ]
 
 active_urls = [u for u in url_inputs if u.strip()]
 video_ids = [extract_video_id(u) for u in active_urls if extract_video_id(u)]
 
-active_urls = [u for u in url_inputs if u.strip()]
-video_ids = [extract_video_id(u) for u in active_urls if extract_video_id(u)]
-
-# ★★★ ここを追加！ 入力された動画IDをSupabaseの追跡リストへ自動登録 ★★★
-if video_ids:
+# 入力された動画IDを Supabase の tracked_videos へ自動登録
+if video_ids and SUPABASE_URL and SUPABASE_KEY:
     for v_id in video_ids:
         try:
-            # 重複登録を無視して登録するリクエスト
             track_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/tracked_videos"
             track_headers = {**headers, "Prefer": "resolution=ignore-duplicates"}
             requests.post(track_url, headers=track_headers, json={"video_id": v_id})
         except Exception:
             pass
-# ★─────────────────────────────────────────────────────────────────★
-
-if len(video_ids) < 1:
-    st.info("左側のサイドバーに、比較したいYouTube動画のURLを少なくとも1本以上入力しろ。")
-    st.stop()
-
-# --- 比較動画データのYouTube API一括取得 ---
-ids_str = ",".join(video_ids)
-yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={ids_str}&key={API_KEY}"
-yt_data = requests.get(yt_url).json().get("items", [])
-
-if not yt_data:
-    st.error("動画データの取得に失敗した。URLを確認しろ。")
-    st.stop()
 
 # ==========================================
-# 機能 1: 公開後スピード比較（初速ペース分析・全自動補填版）
+# 3. メイン画面ヘッダー
 # ==========================================
-st.header("1. 🚀 公開後スピード比較（初速ペース分析）")
+st.title("🔥 K-POP/J-POP 競合VPH & Launch Analytics")
+st.caption("リアルタイムモメンタム × 投稿日時勝ちパターン分析 SaaS")
 
-if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
-    df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
-    
-    # ★【自動化】URLから渡された動画IDの公開日時(published_at)をYouTube APIから全自動取得
-    @st.cache_data(ttl=3600)
-    def fetch_published_at_auto(v_ids, key):
-        pub_map = {}
-        if not v_ids or not key:
-            return pub_map
-        try:
-            yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={','.join(v_ids)}&key={key}"
-            res = requests.get(yt_url).json()
-            for item in res.get("items", []):
-                pub_map[item["id"]] = item["snippet"].get("publishedAt")
-        except Exception:
-            pass
-        return pub_map
+df_all = load_supabase_data()
 
-    # APIから最新の公開日時マップを取得
-    pub_map = fetch_published_at_auto(video_ids, API_KEY)
+if df_all.empty or len(video_ids) == 0:
+    st.info("👈 サイドバーに競合動画のYouTube URLを入力してください。分析を開始します。")
+    st.stop()
+
+# 選択された動画データのみフィルター
+df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
+
+# snippet情報の自動統合
+snippets = fetch_video_snippets(video_ids, YOUTUBE_API_KEY)
+if 'published_at' not in df_filtered.columns:
+    df_filtered['published_at'] = None
+
+df_filtered['published_at'] = df_filtered.apply(
+    lambda row: snippets.get(row['video_id'], {}).get('published_at') if (pd.isna(row['published_at']) or str(row['published_at']) == 'None') else row['published_at'],
+    axis=1
+)
+df_filtered['title'] = df_filtered.apply(
+    lambda row: snippets.get(row['video_id'], {}).get('title', row.get('title', 'Unknown')),
+    axis=1
+)
+
+# 日時型変換
+df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
+df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
+
+# 日本時間（JST）列を作成
+df_filtered['published_at_jst'] = df_filtered['published_at'].dt.tz_convert('Asia/Tokyo')
+
+# 現在時刻（UTC）
+now_utc = datetime.now(timezone.utc)
+
+# ==========================================
+# 4. 指標計算ロジック（Lifetime VPH & モメンタム）
+# ==========================================
+summary_data = []
+
+for v_id in video_ids:
+    df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp')
+    if df_v.empty:
+        continue
     
-    # published_at カラムがない、またはNoneの場合は自動で埋める
-    if 'published_at' not in df_filtered.columns:
-        df_filtered['published_at'] = None
+    latest_row = df_v.iloc[-1]
+    first_row = df_v.iloc[0]
+    
+    title = latest_row['title']
+    views = int(latest_row.get('views', latest_row.get('view_count', 0)))
+    pub_at = latest_row['published_at']
+    pub_at_jst = latest_row['published_at_jst']
+    
+    # 公開からの経過時間(h)
+    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
+    
+    # ① Lifetime VPH (公開からの平均時速)
+    lifetime_vph = round(views / lifetime_hours, 1)
+    
+    # ② 現在モメンタム VPH (ツール登録後の実測増加スピード)
+    tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
+    if tracking_hours > 0.1:
+        views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
+        current_vph = round(views_diff / tracking_hours, 1)
+    else:
+        current_vph = lifetime_vph  # トラッキング開始直後はLifetime VPHを代入
         
-    df_filtered['published_at'] = df_filtered.apply(
-        lambda row: pub_map.get(row['video_id']) if (pd.isna(row['published_at']) or str(row['published_at']) == 'None') else row['published_at'],
-        axis=1
-    )
-
-    # 日時データをUTC型に統一変換
-    df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
-    df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
+    # モメンタム倍率（現在速度 / Lifetime平均速度）
+    momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
     
-    # 経過時間の計算 (取得日時 - 公開日時)
-    df_filtered['elapsed_hours'] = ((df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600).round(1)
-    df_filtered['elapsed_days'] = (df_filtered['elapsed_hours'] / 24).round(1)
-    
-    # グラフ描画UI
-    col_unit, col_metric = st.columns(2)
-    with col_unit:
-        unit_choice = st.radio("X軸の単位を選択", ["経過時間 (Hours)", "経過日数 (Days)"], horizontal=True)
-    with col_metric:
-        y_choice = st.selectbox("Y軸の指標", ["views", "likes", "comments"], format_func=lambda x: {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[x])
-
-    x_col = 'elapsed_hours' if "Hours" in unit_choice else 'elapsed_days'
-    x_label = '公開からの経過時間 (時間)' if "Hours" in unit_choice else '経過日数 (日)'
-    y_label = {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[y_choice]
-
-    # Plotlyで初速比較グラフを表示
-    fig = px.line(
-        df_filtered,
-        x=x_col,
-        y=y_choice,
-        color='title',
-        markers=True,
-        title=f"🔥 動画公開後の{y_label}成長スピード比較",
-        labels={x_col: x_label, y_choice: y_label, 'title': '動画タイトル'}
-    )
-    fig.update_yaxes(rangemode="tozero")
-    fig.update_layout(
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-else:
-    st.warning("⚠️ 表示できるデータがありません。画面左のサイドバーにYouTube動画のURLを入力してください。")
-
-# ==========================================
-# 機能 2 & 3: 熱意度指数 & 初速マトリクス
-# ==========================================
-col_left, col_right = st.columns(2)
-
-metrics_list = []
-
-for item in yt_data:
-    v_id = item['id']
-    title = item['snippet']['title']
-    pub_at = pd.to_datetime(item['snippet']['publishedAt']).tz_convert('Asia/Tokyo')
-    
-    stats = item['statistics']
-    views = int(stats.get('viewCount', 0))
-    likes = int(stats.get('likeCount', 0))
-    comments = int(stats.get('commentCount', 0))
-    
-    # 【機能2: ファンダム熱意度指数】
-    er = ((likes + comments) / views * 100) if views > 0 else 0
-    if er >= 8.0: rank = "S (熱狂的)"
-    elif er >= 4.0: rank = "A (高熱量)"
-    elif er >= 2.0: rank = "B (標準)"
-    else: rank = "C (低迷)"
-    
-    # 【機能3: 投稿時間帯×初速VPH】
-    day_hour = pub_at.strftime('%A (%H:00公開)')
-    
-    metrics_list.append({
+    summary_data.append({
         "video_id": v_id,
-        "タイトル": title,
-        "総再生数": views,
-        "エンゲージメント率": f"{er:.2f}%",
-        "熱量ランク": rank,
-        "公開日時": day_hour,
-        "likes": likes,
-        "comments": comments
+        "title": title,
+        "views": views,
+        "published_at_jst": pub_at_jst,
+        "lifetime_hours": round(lifetime_hours, 1),
+        "lifetime_vph": lifetime_vph,
+        "current_vph": current_vph,
+        "momentum_ratio": momentum_ratio,
+        "pub_day": pub_at_jst.strftime('%A'),
+        "pub_hour": pub_at_jst.hour
     })
 
-df_metrics = pd.DataFrame(metrics_list)
-
-with col_left:
-    st.header("2.  ファンダム熱意度指数")
-    st.dataframe(df_metrics[["タイトル", "総再生数", "エンゲージメント率", "熱量ランク"]], use_container_width=True)
-
-with col_right:
-    st.header("3.  投稿時間帯・公開タイミング")
-    st.dataframe(df_metrics[["タイトル", "公開日時"]], use_container_width=True)
-
-st.divider()
+df_summary = pd.DataFrame(summary_data)
 
 # ==========================================
-# 機能 4: Gemini AIコメント感情＆バズ要因サマリー
+# 機能 1: 📊 2軸スピード比較（Lifetime VPH vs 現在モメンタム）
 # ==========================================
-st.header("4.  Gemini AIコメント感情 & バズ要因分析")
+st.subheader("1. 📊 2軸スピード比較（Lifetime VPH × 現在モメンタム）")
+st.markdown("""
+* **Lifetime VPH**: 公開から現在までの平均時速（過去動画同士の公平な速度基準）
+* **現在モメンタム VPH**: ツール登録後のリアルタイムの勢い（今バズっているか）
+""")
 
-selected_video_title = st.selectbox("AI解析を行う動画を選択しろ", df_metrics["タイトル"].tolist())
-selected_video_id = df_metrics[df_metrics["タイトル"] == selected_video_title]["video_id"].values[0]
+col1, col2 = st.columns([2, 1])
 
-if st.button("最新50件のコメントをGeminiで解析する"):
-    with st.spinner("YouTubeコメントを取得し、Geminiで解析中..."):
-        comment_url = f"https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={selected_video_id}&maxResults=50&key={API_KEY}"
-        c_res = requests.get(comment_url).json()
-        
-        comments_text = []
-        if "items" in c_res:
-            for c_item in c_res["items"]:
-                text = c_item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-                comments_text.append(text)
-        
-        if comments_text:
-            prompt = f"""
-あなたはエンタメ市場のデータアナリストです。
-以下のYouTube動画のコメント50件を分析し、ファンの反響ポイント、海外ファンの反応、ネガティブ要素を整理してください。
-
-【コメント一覧】
-""" + "\n".join(comments_text)
-
-            # Gemini API呼び出し (エラー捕捉付き)
-            try:
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',  # 最も安定している公式モデル
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=CommentAnalysisResponse,
-                        temperature=0.2,
-                    ),
-                )
-                
-                # Pydanticモデルへパース
-                ai_res = CommentAnalysisResponse.model_validate_json(response.text)
-                
-                st.session_state['ai_analysis'] = ai_res
-                st.session_state['ai_target_title'] = selected_video_title
-                
-                st.success("Gemini解析完了！")
-                st.subheader(" ファンが褒めているポイント")
-                for pt in ai_res.praise_points:
-                    st.write(f"- {pt}")
-                    
-                st.subheader(" 海外ファンの反応")
-                st.write(ai_res.overseas_reaction)
-                
-                st.subheader(" 違和感・ネガティブ要素")
-                st.write(ai_res.negative_points)
-
-            except Exception as e:
-                # クラッシュさせずに画面上に本当のエラーメッセージを表示する
-                st.error(f"❌ Gemini API実行エラー: {e}")
-        else:
-            st.warning("コメントが取得できないか、オフになっています。")
-
-# ==========================================
-# 機能 5: ワンクリック「1P分析レポート（PDF）」出力
-# ==========================================
-st.header("5. 📄 エグゼクティブ向け 1PサマリーPDF出力")
-
-def generate_pdf(df_m, ai_data, ai_title):
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    
-    # ヘッダー
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(40, height - 50, "K-POP / J-POP Competitive Analysis Report")
-    p.setFont("Helvetica", 10)
-    p.drawString(40, height - 65, f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    p.line(40, height - 75, width - 40, height - 75)
-    
-    # 1. パフォーマンス指標
-    y = height - 100
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "1. Performance & Engagement Metrics")
-    y -= 20
-    
-    p.setFont("Helvetica", 9)
-    for _, row in df_m.iterrows():
-        safe_title = row['タイトル'].encode('ascii', 'ignore').decode('ascii')
-        if not safe_title: safe_title = f"Video ID: {row['video_id']}"
-        
-        line = f"- {safe_title[:30]}... | Views: {row['総再生数']} | ER: {row['エンゲージメント率']} | Rank: {row['熱量ランク']}"
-        p.drawString(50, y, line)
-        y -= 15
-        
-    # 2. AIコメント解析
-    y -= 20
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "2. Gemini AI Comment Sentiment Summary")
-    y -= 20
-    
-    p.setFont("Helvetica", 9)
-    if ai_data:
-        p.drawString(50, y, f"Target: {ai_title[:40]}...")
-        y -= 15
-        p.drawString(50, y, f"Overseas Reaction: {ai_data.overseas_reaction[:60]}...")
-        y -= 15
-        p.drawString(50, y, f"Negative Signals: {ai_data.negative_points[:60]}...")
-    else:
-        p.drawString(50, y, "No AI Analysis performed yet.")
-        
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return buffer
-
-if st.button(" 1Pレポート（PDF）を発行・ダウンロード"):
-    ai_data = st.session_state.get('ai_analysis', None)
-    ai_title = st.session_state.get('ai_target_title', "")
-    
-    pdf_buffer = generate_pdf(df_metrics, ai_data, ai_title)
-    
-    st.download_button(
-        label=" 今すぐPDFをダウンロードしろ",
-        data=pdf_buffer,
-        file_name=f"KPOP_Analysis_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
-        mime="application/pdf"
+with col1:
+    # Plotly 2軸比較バーチャト
+    fig_vph = go.Figure()
+    fig_vph.add_trace(go.Bar(
+        x=df_summary['title'],
+        y=df_summary['lifetime_vph'],
+        name='Lifetime VPH (平均時速)',
+        marker_color='#1f77b4'
+    ))
+    fig_vph.add_trace(go.Bar(
+        x=df_summary['title'],
+        y=df_summary['current_vph'],
+        name='現在モメンタム VPH (直近時速)',
+        marker_color='#ff7f0e'
+    ))
+    fig_vph.update_layout(
+        barmode='group',
+        title="動画別 VPH 速度比較",
+        xaxis_title="動画タイトル",
+        yaxis_title="VPH (再生増加数 / 時間)",
+        legend=dict(orientation="h", y=1.1)
     )
+    st.plotly_chart(fig_vph, use_container_width=True)
+
+with col2:
+    st.markdown("##### 🚀 モメンタム判定")
+    for _, row in df_summary.iterrows():
+        status = "🔥 急加速中" if row['momentum_ratio'] > 1.2 else ("📉 減速傾向" if row['momentum_ratio'] < 0.8 else "➡️ 安定維持")
+        st.write(f"**{row['title'][:15]}...**")
+        st.caption(f"現在の勢い: **{row['momentum_ratio']}倍** ({status})")
+        st.write(f"・現在時速: `{row['current_vph']:,} VPH`")
+        st.write(f"・通算時速: `{row['lifetime_vph']:,} VPH`")
+        st.divider()
+
+# ==========================================
+# 機能 2: 🚀 競合新曲「事前登録・自動監視（Launch Tracker）」
+# ==========================================
+st.subheader("2. 🚀 競合新曲 Launch Tracker（初速レーダー）")
+st.caption("公開直後（72時間以内）の新曲MVを自動検知し、初期ロケットスタート速度を追跡")
+
+# 72時間以内に公開された新曲のフィルタリング
+df_new_releases = df_summary[df_summary['lifetime_hours'] <= 72]
+
+if not df_new_releases.empty:
+    st.success(f"🎯 追跡中の対象に **{len(df_new_releases)}本** の新曲（公開72時間以内）を検知しました！")
+    cols = st.columns(len(df_new_releases))
+    for idx, (_, row) in enumerate(df_new_releases.iterrows()):
+        with cols[idx % len(cols)]:
+            st.metric(
+                label=f"🆕 {row['title'][:18]}...",
+                value=f"{row['views']:,} 回",
+                delta=f"初速 {row['lifetime_vph']:,} VPH"
+            )
+            st.caption(f"📅 公開: {row['published_at_jst'].strftime('%m/%d %H:%M')} (経過: {row['lifetime_hours']}h)")
+else:
+    st.info("💡 現在、選択されたURLの中に公開72時間以内の『新曲』はありません。これから公開される新曲MVのURLを登録しておくと、公開0分目からの完全な初速VPHが蓄積されます。")
+
+# ==========================================
+# 機能 3: 📅 投稿日時 × バズ速度マトリクス（Publishing Matrix）
+# ==========================================
+st.subheader("3. 📅 投稿日時 × バズ速度（JST 勝ちパターン分析）")
+st.markdown("競合動画の `公開曜日` と `公開時間帯（日本時間 JST）` を分析し、**どのタイミングで出された動画が最も高い Lifetime VPH を記録しているか** を可視化します。")
+
+# 曜日並び順
+days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+days_jp = {'Monday':'月', 'Tuesday':'火', 'Wednesday':'水', 'Thursday':'木', 'Friday':'金', 'Saturday':'土', 'Sunday':'日'}
+
+df_summary['pub_day_jp'] = df_summary['pub_day'].map(days_jp)
+
+# ピボットテーブル作成 (曜日 × 時間帯 の平均 Lifetime VPH)
+matrix_df = df_summary.pivot_table(
+    index='pub_day_jp',
+    columns='pub_hour',
+    values='lifetime_vph',
+    aggfunc='mean'
+).fillna(0)
+
+if not matrix_df.empty:
+    fig_matrix = px.imshow(
+        matrix_df,
+        labels=dict(x="公開時間帯 (時)", y="公開曜日", color="平均 Lifetime VPH"),
+        x=[f"{h}時" for h in matrix_df.columns],
+        title="投稿タイミング別 平均 Lifetime VPH ヒートマップ",
+        color_continuous_scale="Reds"
+    )
+    st.plotly_chart(fig_matrix, use_container_width=True)
+    
+    # 勝ちパターンサマリー
+    best_row = df_summary.loc[df_summary['lifetime_vph'].idxmax()]
+    st.success(f"🏆 **競合の最高ヒットタイミング分析結果**\n\n"
+               f"最も高い初速・バズ速度（`{best_row['lifetime_vph']:,} VPH`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['title']}`）です！")
+
+# ==========================================
+# 5. Gemini API による自動AI競合レポート生成
+# ==========================================
+st.subheader("🤖 Gemini AI による競合モメンタム診断レポート")
+
+if GEMINI_API_KEY:
+    if st.button("AI解説レポートを生成する"):
+        with st.spinner("Gemini APIでデータ分析中..."):
+            try:
+                genai.configure(api_key=GEMINI_API_KEY)
+                
+                # 利用可能なモデルの選定
+                model_name = "gemini-2.0-flash"
+                model = genai.GenerativeModel(model_name)
+                
+                # プロンプト作成
+                prompt = f"""
+あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
+以下の競合MVパフォーマンスデータを分析し、芸能事務所のマネージャー向けに簡潔で実践的なインサイトレポートを作成してください。
+
+【分析データ】
+{df_summary[['title', 'views', 'lifetime_vph', 'current_vph', 'momentum_ratio', 'pub_day_jp', 'pub_hour']].to_string()}
+
+【レポート構成案】
+1. **全体サマリー**: 現在最も勢いのある動画と注意すべき傾向
+2. **モメンタム分析**: 通算速度(Lifetime VPH)に対して直近速度(現在VPH)が急上昇/減速している動画の理由考察
+3. **投稿戦略の勝ちパターン**: 投稿曜日・時間帯から見出せる競合のリリース戦略
+4. **自社グループへのアドバイス**: 次回リリース時に真似すべき/避けるべきポイント
+
+専門用語は噛み砕き、箇条書きで分かりやすく出力してください。
+"""
+                response = model.generate_content(prompt)
+                st.markdown(response.text)
+            except Exception as e:
+                st.error(f"Gemini API実行エラー: {e}")
+else:
+    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断レポート機能が有効化されます。")
