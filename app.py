@@ -316,7 +316,7 @@ with col1:
 with col2:
     st.markdown("#####  バズ加速率判定")
     for _, row in df_summary.iterrows():
-        status = " 急加速中" if row['momentum_ratio'] > 1.2 else ("📉 減速傾向" if row['momentum_ratio'] < 0.8 else "➡️ 安定維持")
+        status = " 急加速中" if row['momentum_ratio'] > 1.2 else (" 減速傾向" if row['momentum_ratio'] < 0.8 else " 安定維持")
         st.write(f"**{row['short_title']}**")
         st.caption(f"バズ加速率: **{row['momentum_ratio']}倍** ({status})")
         st.write(f"・直近速度: `{row['current_vph']:,} 回/時`")
@@ -326,7 +326,7 @@ with col2:
 # ==========================================
 # 機能 2:  競合新曲 Launch Tracker（初速レーダー）
 # ==========================================
-st.subheader("2.  競合新曲 Launch Tracker（初速レーダー）")
+st.subheader("2.  競合新曲の伸びチェック")
 st.caption("公開直後（72時間以内）の新曲MVを自動検知し、初期ロケットスタートの伸びを監視")
 
 df_new_releases = df_summary[df_summary['lifetime_hours'] <= 72]
