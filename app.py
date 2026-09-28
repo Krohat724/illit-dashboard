@@ -266,7 +266,7 @@ for v_id in video_ids:
         current_vph = lifetime_vph
         
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-　  likes = int(latest_row.get('likes', 0))
+    likes = int(latest_row.get('likes', 0))
     comments = int(latest_row.get('comments', 0))
     like_rate = round((likes / views) * 100, 2) if views > 0 else 0
     comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
