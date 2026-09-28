@@ -214,12 +214,22 @@ for v_id in video_ids:
             lifetime_vph = round(views / lifetime_hours, 1)
             current_vph = lifetime_vph
             momentum_ratio = 1.0
+            likes = ls.get('likes', 0)
+            comments = ls.get('comments', 0)
+            like_rate = round((likes / views) * 100, 2) if views > 0 else 0
+            comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
+            engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
             
             summary_data.append({
                 "video_id": v_id,
                 "full_title": full_title,
                 "short_title": short_title,
                 "views": views,
+                "likes": likes,
+                "comments": comments,
+                "like_rate": like_rate,           # 高評価率 (%)
+                "comment_rate": comment_rate,     # コメント率 (%)
+                "engagement_rate": engagement_rate, # 総合熱量 (%)
                 "published_at_jst": pub_at_jst,
                 "lifetime_hours": round(lifetime_hours, 1),
                 "lifetime_vph": lifetime_vph,
@@ -256,12 +266,22 @@ for v_id in video_ids:
         current_vph = lifetime_vph
         
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+　   likes = int(latest_row.get('likes', 0))
+    comments = int(latest_row.get('comments', 0))
+    like_rate = round((likes / views) * 100, 2) if views > 0 else 0
+    comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
+    engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
     
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
         "short_title": short_title,
         "views": views,
+        "likes": likes,
+        "comments": comments,
+        "like_rate": like_rate,           # 高評価率 (%)
+        "comment_rate": comment_rate,     # コメント率 (%)
+        "engagement_rate": engagement_rate, # 総合熱量 (%)
         "published_at_jst": pub_at_jst,
         "lifetime_hours": round(lifetime_hours, 1),
         "lifetime_vph": lifetime_vph,
@@ -374,7 +394,60 @@ if not matrix_df.empty:
     best_row = df_summary.loc[df_summary['lifetime_vph'].idxmax()]
     st.success(f" **競合の最高ヒットタイミング分析結果**\n\n"
                f"最も高い初速・伸び（`{best_row['lifetime_vph']:,} 回/時`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['full_title']}`）です！")
+# ==========================================
+# 機能 4:  ファンダム熱量（エンゲージメント分析）
+# ==========================================
+st.subheader("4. ファンダム熱量・エンゲージメント分析")
+st.markdown("""
+再生数に対する **高評価率（高評価÷再生数）** と **コメント率（コメント÷再生数）** を数値化し、ファンの「熱狂度（コアファンの濃さ）」を分析します。
+* **高評価率**: 楽曲やMVに対するポジティブな支持（目安: 2.0%以上で高評価）
+* **コメント率**: ファンダムの熱量・口コミ拡散力（目安: 0.05%以上で熱狂的ファン多数）
+""")
 
+col_eng1, col_eng2 = st.columns([2, 1])
+
+with col_eng1:
+    # 高評価率とコメント率の比較グラフ
+    fig_eng = go.Figure()
+    fig_eng.add_trace(go.Bar(
+        x=df_summary['short_title'],
+        y=df_summary['like_rate'],
+        name='高評価率 (%)',
+        marker_color='#FF4B4B',
+        hovertext=df_summary['full_title']
+    ))
+    fig_eng.add_trace(go.Bar(
+        x=df_summary['short_title'],
+        y=df_summary['comment_rate'],
+        name='コメント率 (%)',
+        marker_color='#00CC96',
+        hovertext=df_summary['full_title']
+    ))
+    fig_eng.update_layout(
+        barmode='group',
+        title="動画別 エンゲージメント率（ファンダム反応率）比較",
+        xaxis_title="動画タイトル",
+        yaxis_title="割合 (%)",
+        legend=dict(orientation="h", y=1.1)
+    )
+    st.plotly_chart(fig_eng, use_container_width=True)
+
+with col_eng2:
+    st.markdown("#####  コアファン濃度診断")
+    for _, row in df_summary.iterrows():
+        # 熱量ランク判定
+        if row['engagement_rate'] >= 3.0:
+            rank = " 超熱狂ファンダム (神曲・熱量高)"
+        elif row['engagement_rate'] >= 1.5:
+            rank = " 良好なエンゲージメント"
+        else:
+            rank = "👀 一般ライト層中心 (再生数先行型)"
+            
+        st.write(f"**{row['short_title']}**")
+        st.caption(f"ファンダム熱量: **{rank}**")
+        st.write(f"・高評価数: `{row['likes']:,} 件` (`{row['like_rate']}%`)")
+        st.write(f"・コメント数: `{row['comments']:,} 件` (`{row['comment_rate']}%`)")
+        st.divider()
 # ==========================================
 # 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
 # ==========================================
