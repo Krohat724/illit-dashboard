@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import pandas as pd
 import numpy as np
@@ -54,19 +55,42 @@ def extract_video_id(url):
         return url
     return None
 
-# 動画タイトルをグラフ用に短縮・整形する関数
-def clean_title(title, max_len=16):
+# 動画タイトルからアーティスト名を消去し、「曲名」だけをスマートに抽出する関数
+def clean_title(title, max_len=18):
     if not title:
         return "Unknown"
-    # 不要な装飾語のカット
-    remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
+    
+    # 1. 『』, 「」, '', "" 等の括弧で囲まれた純粋な曲名部分を自動で抜き出す
+    brackets_patterns = [
+        r"『([^』]+)』",
+        r"「([^」]+)」",
+        r"'([^']+)'",
+        r'"([^"]+)"'
+    ]
+    for pattern in brackets_patterns:
+        match = re.search(pattern, title)
+        if match:
+            extracted = match.group(1).strip()
+            if extracted:
+                return extracted[:max_len] + "…" if len(extracted) > max_len else extracted
+
+    # 2. 括弧が付いていない場合のクリーニング（MV等の文字削除＆ / や - の後ろにある曲名を取得）
     cleaned = title
+    remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "(Official)", "Performance Video"]
     for w in remove_words:
-        cleaned = cleaned.replace(w, "")
+        cleaned = re.sub(re.escape(w), "", cleaned, flags=re.IGNORECASE)
+        
+    for sep in ["/", "-", "|"]:
+        if sep in cleaned:
+            parts = cleaned.split(sep)
+            candidate = parts[-1].strip()
+            if candidate:
+                cleaned = candidate
+
     cleaned = cleaned.strip()
     if len(cleaned) > max_len:
         return cleaned[:max_len] + "…"
-    return cleaned
+    return cleaned if cleaned else title
 
 # YouTube APIから snippet を自動取得
 @st.cache_data(ttl=3600)
