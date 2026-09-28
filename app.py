@@ -55,25 +55,28 @@ def extract_video_id(url):
         return url
     return None
 
-# 動画タイトルから「曲名 / アーティスト名」を自動で綺麗に抜き出す関数
-def clean_title(title, max_len=24):
+# 動画タイトルから「曲名 / アーティスト名」を自動で綺麗に抜き出す関数（ゴミ記号除去版）
+def clean_title(title, max_len=26):
     if not title:
         return "Unknown"
     
-    # 1. 不要な装飾語の削除
+    cleaned_title = title
+    
+    # 1. 【MV】や [MV] などの括弧ごと綺麗に削除（空の【】が残るのを防ぐ）
+    cleaned_title = re.sub(r"[【\[\(\{\<]\s*(Official\s*)?(MV|Music Video|Performance Video|Dance Practice|Audio)\s*(full)?\s*[】\]\)\}\>]", "", cleaned_title, flags=re.IGNORECASE)
+    
+    # 単体で残る不要文字列の削除
     remove_words = [
         "Official MV", "Official Music Video", "MUSIC VIDEO", "MV full", "MV", 
-        "【MV】", "[MV]", "【MV full】", "(Official)", "Performance Video", 
-        "Official Audio", "Dance Practice"
+        "(Official)", "Performance Video", "Official Audio", "Dance Practice"
     ]
-    cleaned_title = title
     for w in remove_words:
         cleaned_title = re.sub(re.escape(w), "", cleaned_title, flags=re.IGNORECASE)
 
     song_title = None
     artist_name = None
 
-    # 2. 『』, 「」, '', "" の括弧から「曲名」を抽出し、残りを「アーティスト名」にする
+    # 2. 『』, 「」, '', "" の括弧から「曲名」を抜き出す
     brackets_patterns = [
         r"『([^』]+)』",
         r"「([^」]+)」",
@@ -85,12 +88,12 @@ def clean_title(title, max_len=24):
         match = re.search(pattern, cleaned_title)
         if match:
             song_title = match.group(1).strip()
-            # 曲名以外の部分（残りの文字）からアーティスト名を取得
+            # 曲名以外の残りの文字からアーティスト名を取得
             remaining = cleaned_title.replace(match.group(0), "").strip()
             
-            # 18th Single 等の不要なシングル表記やスラッシュの除去
+            # シングル表記や不要な各種記号・残った【】を一括掃除
             remaining = re.sub(r"\b\d+(st|nd|rd|th)?\s*(Single|Album|EP)\b", "", remaining, flags=re.IGNORECASE)
-            remaining = re.sub(r"[／/\|\-\–\—]", " ", remaining)
+            remaining = re.sub(r"[【】\[\]\(\)\{\}\<\>／/\|\-\–\—]", " ", remaining)
             remaining = re.sub(r"\s+", " ", remaining).strip()
             
             if remaining:
@@ -103,13 +106,17 @@ def clean_title(title, max_len=24):
             if sep in cleaned_title:
                 parts = [p.strip() for p in cleaned_title.split(sep) if p.strip()]
                 if len(parts) >= 2:
-                    artist_name = parts[0]
+                    artist_name = re.sub(r"[【】\[\]\(\)\{\}\<\>]", "", parts[0]).strip()
                     song_title = parts[-1]
                     break
         if not song_title:
             song_title = cleaned_title.strip()
 
-    # 4. 「曲名 / アーティスト名」のフォーマットに成形
+    # 4. アーティスト名の最終仕上げ（残った不必要な記号を完全に消去）
+    if artist_name:
+        artist_name = re.sub(r"[【】\[\]\(\)\{\}\<\>]", "", artist_name).strip()
+
+    # 5. 「曲名 / アーティスト名」にフォーマット
     if song_title and artist_name:
         result = f"{song_title} / {artist_name}"
     elif song_title:
@@ -117,7 +124,6 @@ def clean_title(title, max_len=24):
     else:
         result = title
 
-    # 長すぎる場合はスマートにカット
     if len(result) > max_len:
         return result[:max_len] + "…"
     return result
