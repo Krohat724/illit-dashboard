@@ -172,7 +172,7 @@ if video_ids and SUPABASE_URL and SUPABASE_KEY:
 # ==========================================
 # 3. メイン画面ヘッダー
 # ==========================================
-st.title(" K-POP/J-POP 競合ヒットスピード＆バズ解析")
+st.title("バズ解析ダッシュボード")
 st.caption("リアルタイムのバズ勢い × 投稿日時の勝ちパターン分析 SaaS")
 
 df_all = load_supabase_data()
