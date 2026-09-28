@@ -55,42 +55,72 @@ def extract_video_id(url):
         return url
     return None
 
-# 動画タイトルからアーティスト名を消去し、「曲名」だけをスマートに抽出する関数
-def clean_title(title, max_len=18):
+# 動画タイトルから「曲名 / アーティスト名」を自動で綺麗に抜き出す関数
+def clean_title(title, max_len=24):
     if not title:
         return "Unknown"
     
-    # 1. 『』, 「」, '', "" 等の括弧で囲まれた純粋な曲名部分を自動で抜き出す
+    # 1. 不要な装飾語の削除
+    remove_words = [
+        "Official MV", "Official Music Video", "MUSIC VIDEO", "MV full", "MV", 
+        "【MV】", "[MV]", "【MV full】", "(Official)", "Performance Video", 
+        "Official Audio", "Dance Practice"
+    ]
+    cleaned_title = title
+    for w in remove_words:
+        cleaned_title = re.sub(re.escape(w), "", cleaned_title, flags=re.IGNORECASE)
+
+    song_title = None
+    artist_name = None
+
+    # 2. 『』, 「」, '', "" の括弧から「曲名」を抽出し、残りを「アーティスト名」にする
     brackets_patterns = [
         r"『([^』]+)』",
         r"「([^」]+)」",
         r"'([^']+)'",
         r'"([^"]+)"'
     ]
+
     for pattern in brackets_patterns:
-        match = re.search(pattern, title)
+        match = re.search(pattern, cleaned_title)
         if match:
-            extracted = match.group(1).strip()
-            if extracted:
-                return extracted[:max_len] + "…" if len(extracted) > max_len else extracted
+            song_title = match.group(1).strip()
+            # 曲名以外の部分（残りの文字）からアーティスト名を取得
+            remaining = cleaned_title.replace(match.group(0), "").strip()
+            
+            # 18th Single 等の不要なシングル表記やスラッシュの除去
+            remaining = re.sub(r"\b\d+(st|nd|rd|th)?\s*(Single|Album|EP)\b", "", remaining, flags=re.IGNORECASE)
+            remaining = re.sub(r"[／/\|\-\–\—]", " ", remaining)
+            remaining = re.sub(r"\s+", " ", remaining).strip()
+            
+            if remaining:
+                artist_name = remaining
+            break
 
-    # 2. 括弧が付いていない場合のクリーニング（MV等の文字削除＆ / や - の後ろにある曲名を取得）
-    cleaned = title
-    remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "(Official)", "Performance Video"]
-    for w in remove_words:
-        cleaned = re.sub(re.escape(w), "", cleaned, flags=re.IGNORECASE)
-        
-    for sep in ["/", "-", "|"]:
-        if sep in cleaned:
-            parts = cleaned.split(sep)
-            candidate = parts[-1].strip()
-            if candidate:
-                cleaned = candidate
+    # 3. 括弧がない場合は / や - で分割して抽出
+    if not song_title:
+        for sep in ["/", "-", "|", "／"]:
+            if sep in cleaned_title:
+                parts = [p.strip() for p in cleaned_title.split(sep) if p.strip()]
+                if len(parts) >= 2:
+                    artist_name = parts[0]
+                    song_title = parts[-1]
+                    break
+        if not song_title:
+            song_title = cleaned_title.strip()
 
-    cleaned = cleaned.strip()
-    if len(cleaned) > max_len:
-        return cleaned[:max_len] + "…"
-    return cleaned if cleaned else title
+    # 4. 「曲名 / アーティスト名」のフォーマットに成形
+    if song_title and artist_name:
+        result = f"{song_title} / {artist_name}"
+    elif song_title:
+        result = song_title
+    else:
+        result = title
+
+    # 長すぎる場合はスマートにカット
+    if len(result) > max_len:
+        return result[:max_len] + "…"
+    return result
 
 # YouTube APIから snippet を自動取得
 @st.cache_data(ttl=3600)
