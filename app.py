@@ -592,7 +592,7 @@ with col_eng2:
 # ==========================================
 # 5. AI自動診断 & PDF・印刷用レポート出力機能（完全ガード版）
 # ==========================================
-st.subheader("🤖 AI競合診断 ＆ PDFレポート自動出力")
+st.subheader(" AI競合診断 ＆ PDFレポート自動出力")
 
 # Session State でAI生成レポートを画面内に保持（他の操作をしても消えない）
 if "ai_report_text" not in st.session_state:
@@ -601,7 +601,7 @@ if "ai_report_text" not in st.session_state:
 if GEMINI_API_KEY:
     col_ai1, col_ai2 = st.columns([1, 3])
     with col_ai1:
-        if st.button("✨ Gemini AI で分析レポート生成", use_container_width=True):
+        if st.button(" Gemini AI で分析レポート生成", use_container_width=True):
             with st.spinner("Gemini APIでデータ分析中...（数秒かかります）"):
                 try:
                     import google.generativeai as genai
@@ -625,21 +625,21 @@ if GEMINI_API_KEY:
                     response = model.generate_content(prompt)
                     # 結果を Session State に保存
                     st.session_state.ai_report_text = response.text
-                    st.success("✅ レポートの生成が完了しました！")
+                    st.success(" レポートの生成が完了しました！")
                     
                 except Exception as e:
                     error_msg = str(e)
                     # 429エラー（制限超過）の場合の専用メッセージ
                     if "429" in error_msg or "Quota" in error_msg:
-                        st.error("⚠️ AI APIの無料枠（短時間の回数制限）に達しました。約1分間待ってから、もう一度ボタンを押してください。")
+                        st.error(" AI APIの無料枠（短時間の回数制限）に達しました。約1分間待ってから、もう一度ボタンを押してください。")
                     else:
-                        st.error(f"⚠️ AIの実行中にエラーが発生しました: {error_msg}")
+                        st.error(f" AIの実行中にエラーが発生しました: {error_msg}")
 
     # AIレポートが生成されていれば表示
     if st.session_state.ai_report_text:
         st.markdown(st.session_state.ai_report_text)
 else:
-    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
+    st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
 
 # --- 以降のHTML/PDFダウンロード機能のコードはそのまま残す ---
 
