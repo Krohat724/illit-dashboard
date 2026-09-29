@@ -128,6 +128,29 @@ def clean_title(title, max_len=26):
         return result[:max_len] + "…"
     return result
 
+# YouTube URLから Video ID (11桁の識別子) を抽出する関数
+def extract_video_id(url):
+    if not url or not isinstance(url, str):
+        return None
+    
+    # normal: https://www.youtube.com/watch?v=XXXXXXXXXXX
+    # short: https://youtu.be/XXXXXXXXXXX
+    # shorts: https://www.youtube.com/shorts/XXXXXXXXXXX
+    patterns = [
+        r"(?:v=|\/v\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})",
+        r"youtu\.be\/([0-9A-Za-z_-]{11})"
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url.strip())
+        if match:
+            return match.group(1)
+            
+    # URLではなくIDそのものが直接入力された場合のフォールバック
+    if len(url.strip()) == 11 and re.match(r"^[0-9A-Za-z_-]{11}$", url.strip()):
+        return url.strip()
+        
+    return None
+
 # YouTube APIから snippet を自動取得
 @st.cache_data(ttl=3600)
 def fetch_video_snippets(v_ids, api_key):
