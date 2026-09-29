@@ -590,9 +590,9 @@ with col_eng2:
         st.write(f"・コメント数: `{row['comments']:,} 件` (`{row['comment_rate']}%`)")
         st.divider()
 # ==========================================
-# 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
+# 5. AI自動診断 & PDF・印刷用レポート出力機能（完全ガード版）
 # ==========================================
-st.subheader(" ワンタップAI役員レポート")
+st.subheader("🤖 AI競合診断 ＆ PDFレポート自動出力")
 
 # Session State でAI生成レポートを画面内に保持（他の操作をしても消えない）
 if "ai_report_text" not in st.session_state:
@@ -601,38 +601,47 @@ if "ai_report_text" not in st.session_state:
 if GEMINI_API_KEY:
     col_ai1, col_ai2 = st.columns([1, 3])
     with col_ai1:
-        if st.button(" Gemini AI で分析レポート生成", use_container_width=True):
-            with st.spinner("Gemini APIでデータ分析中..."):
+        if st.button("✨ Gemini AI で分析レポート生成", use_container_width=True):
+            with st.spinner("Gemini APIでデータ分析中...（数秒かかります）"):
                 try:
+                    import google.generativeai as genai
                     genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel("gemini-3.8-flash")
+                    model = genai.GenerativeModel("gemini-1.5-flash") # 既存の指定モデルがある場合はそれに合わせる
                     
                     prompt = f"""
-あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
-以下の競合MVパフォーマンスデータを分析し、芸能事務所のマネージャー向けに簡潔で実践的なインサイトレポートを作成してください。
+あなたはエンタメ業界専門のデータアナリストです。
+以下の競合MVパフォーマンスデータを分析し、マネジメント層向けに簡潔で実践的なインサイトレポートを作成してください。
 
 【分析データ】
-{df_summary[['full_title', 'views', 'lifetime_vph', 'current_vph', 'momentum_ratio', 'pub_day_jp', 'pub_hour']].to_string()}
+{df_summary[['full_title', 'views', 'lifetime_vph', 'current_vph', 'momentum_ratio']].to_string()}
 
 【レポート構成案】
 1. **全体サマリー**: 現在最も勢いのある動画と注意すべき傾向
-2. **バズ勢い分析**: 通算平均に対して直近速度が急上昇/減速している動画の理由考察
-3. **投稿戦略の勝ちパターン**: 投稿曜日・時間帯から見出せる競合のリリース戦略
-4. **自社グループへのアドバイス**: 次回リリース時に真似すべき/避けるべきポイント
+2. **バズ勢い分析**: 通算平均に対して直近速度が急上昇/減速している理由考察
+3. **自社へのアドバイス**: 次回リリース時に真似すべき/避けるべきポイント
 
 専門用語は噛み砕き、箇条書きで分かりやすく出力してください。
 """
                     response = model.generate_content(prompt)
-                    # 結果を Session State に保存（画面リロードしても消えない）
+                    # 結果を Session State に保存
                     st.session_state.ai_report_text = response.text
+                    st.success("✅ レポートの生成が完了しました！")
+                    
                 except Exception as e:
-                    st.error(f"Gemini API実行エラー: {e}")
+                    error_msg = str(e)
+                    # 429エラー（制限超過）の場合の専用メッセージ
+                    if "429" in error_msg or "Quota" in error_msg:
+                        st.error("⚠️ AI APIの無料枠（短時間の回数制限）に達しました。約1分間待ってから、もう一度ボタンを押してください。")
+                    else:
+                        st.error(f"⚠️ AIの実行中にエラーが発生しました: {error_msg}")
 
     # AIレポートが生成されていれば表示
     if st.session_state.ai_report_text:
         st.markdown(st.session_state.ai_report_text)
 else:
-    st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
+    st.info("💡 `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
+
+# --- 以降のHTML/PDFダウンロード機能のコードはそのまま残す ---
 
 # --- レポート出力（HTML/PDF印刷対応）機能 ---
 st.divider()
