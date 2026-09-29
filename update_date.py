@@ -4,11 +4,11 @@ from supabase import create_client, Client
 
 try:
     # 1. 環境変数の取得とSupabaseの初期化
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    youtube_api_key = os.environ.get("YOUTUBE_API_KEY")
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+    YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
-    if not all([url, key, youtube_api_key]):
+    if not all([SUPABASE_URL, SUPABASE_KEY, YOUTUBE_API_KEY]):
         raise ValueError("Error: 必要なAPIキー（環境変数）が設定されていません。")
 
     supabase: Client = create_client(url, key)
