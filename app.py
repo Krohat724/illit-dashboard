@@ -606,7 +606,7 @@ if GEMINI_API_KEY:
                 try:
                     import google.generativeai as genai
                     genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel("gemini-1.5-flash") # 既存の指定モデルがある場合はそれに合わせる
+                    model = genai.GenerativeModel("gemini-3.8-flash") # 既存の指定モデルがある場合はそれに合わせる
                     
                     prompt = f"""
 あなたはエンタメ業界専門のデータアナリストです。
