@@ -303,7 +303,13 @@ for v_id in video_ids:
     latest_row = df_v.iloc[-1]
     first_row = df_v.iloc[0]
     
-    full_title = latest_row.get('title', 'Unknown')
+    
+    # 蓄積データからタイトルを取得（空・NaN・Unknownの場合はYouTube APIから強制取得して補填）
+    full_title = latest_row.get('title')
+    if pd.isna(full_title) or not full_title or str(full_title).lower() in ['none', 'nan', 'unknown']:
+        snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
+        full_title = snippets.get(v_id, {}).get('title', 'Unknown')
+        
     short_title = clean_title(full_title)
     views = int(latest_row.get('views', latest_row.get('view_count', 0)))
     
