@@ -317,6 +317,39 @@ for v_id in video_ids:
     
     lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
     lifetime_vph = round(views / lifetime_hours, 1)
+
+    # ==========================================
+    # ▼▼▼ 修正・上書きする部分 ▼▼▼
+    # ==========================================
+    # ① 通算ヒットペース (Lifetime VPH)
+    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
+    lifetime_vph = round(views / lifetime_hours, 1)
+    
+    # ② 現在のバズ勢い (直近最大24時間の「瞬間風速」に超高感度化)
+    latest_time = latest_row['timestamp']
+    recent_df = df_v[df_v['timestamp'] >= (latest_time - pd.Timedelta(hours=24))]
+    
+    past_row = None
+    if len(recent_df) > 1:
+        past_row = recent_df.iloc[0] # 最大24時間前のデータと比較
+    elif len(df_v) > 1:
+        past_row = df_v.iloc[-2]     # 24時間以内のデータがない場合は直近1つ前と比較
+        
+    if past_row is not None:
+        tracking_hours = (latest_time - past_row['timestamp']).total_seconds() / 3600
+        # 3分(0.05時間)以上のデータ間隔があれば「今の時速」を計算
+        if tracking_hours > 0.05:  
+            past_views = int(past_row.get('views', past_row.get('view_count', 0)))
+            current_vph = round((views - past_views) / tracking_hours, 1)
+        else:
+            current_vph = lifetime_vph
+    else:
+        current_vph = lifetime_vph
+        
+    momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+    # ==========================================
+    # ▲▲▲ 修正・上書きここまで ▲▲▲
+    # ==========================================
     
     tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
     if tracking_hours > 0.1:
