@@ -9,6 +9,25 @@ import streamlit as st
 from datetime import datetime, timezone
 import google.generativeai as genai
 
+# YouTube URLから Video ID (11桁の識別子) を抽出する関数（先頭付近に配置）
+def extract_video_id(url):
+    if not url or not isinstance(url, str):
+        return None
+    
+    patterns = [
+        r"(?:v=|\/v\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})",
+        r"youtu\.be\/([0-9A-Za-z_-]{11})"
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url.strip())
+        if match:
+            return match.group(1)
+            
+    if len(url.strip()) == 11 and re.match(r"^[0-9A-Za-z_-]{11}$", url.strip()):
+        return url.strip()
+        
+    return None
+
 # ==========================================
 # 0. ページ基本設定 & カスタムCSS
 # ==========================================
