@@ -12,8 +12,7 @@ import google.generativeai as genai
 # 0. ページ基本設定 & カスタムCSS
 # ==========================================
 st.set_page_config(
-    page_title="K-POP/J-POP 競合バズ解析 SaaS",
-    page_icon="🚀",
+    page_title=" 競合バズ解析 SaaS",
     layout="wide"
 )
 
