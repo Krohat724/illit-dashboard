@@ -433,60 +433,64 @@ for v_id in video_ids:
 df_summary = pd.DataFrame(summary_data)
 
 # ==========================================
-# 機能 1: VPHモメンタム比較（修正版）
+# 機能 1: VPHモメンタム比較（空データ落ち防止版）
 # ==========================================
 st.subheader("1. VPHモメンタム比較")
 st.markdown("""
 * **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度
-* **現在のバズ勢い（直近時速）**: ツールに登録後のリアルタイム増加速度（今まさにバズっているか）
+* **現在のバズ勢い（直近時速）**: ツールに登録後のリアルタイム増加速度（今までに蓄積されたログから算出した勢い）
 """)
 
-col1, col2 = st.columns([2, 1])
+# データが存在し、かつ必要なカラムが揃っている場合のみ描画
+if 'df_summary' in locals() and not df_summary.empty and 'short_title' in df_summary.columns:
+    col1, col2 = st.columns([2, 1])
 
-with col1:
-    fig_vph = go.Figure()
-    fig_vph.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['lifetime_vph'],
-        name='通算ヒットペース (青)',
-        marker_color='#1f77b4',
-        hovertext=df_summary['full_title']
-    ))
-    fig_vph.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['current_vph'],
-        name='現在のバズ勢い (オレンジ)',
-        marker_color='#ff7f0e',
-        hovertext=df_summary['full_title']
-    ))
-    fig_vph.update_layout(
-        barmode='group',
-        title="動画別 再生速度 (VPH) 比較",
-        xaxis_title="動画タイトル",
-        yaxis_title="再生増加数 (回 / 時間)",
-        legend=dict(orientation="h", y=1.1)
-    )
-    st.plotly_chart(fig_vph, use_container_width=True)
+    with col1:
+        fig_vph = go.Figure()
+        fig_vph.add_trace(go.Bar(
+            x=df_summary['short_title'],
+            y=df_summary['lifetime_vph'],
+            name='通算ヒットペース (青)',
+            marker_color='#1f77b4',
+            hovertext=df_summary.get('full_title', df_summary['short_title'])
+        ))
+        fig_vph.add_trace(go.Bar(
+            x=df_summary['short_title'],
+            y=df_summary['current_vph'],
+            name='現在のバズ勢い (オレンジ)',
+            marker_color='#ff7f0e',
+            hovertext=df_summary.get('full_title', df_summary['short_title'])
+        ))
+        fig_vph.update_layout(
+            barmode='group',
+            title="動画別 再生速度 (VPH) 比較",
+            xaxis_title="動画タイトル",
+            yaxis_title="再生増加数 (回 / 時間)",
+            legend=dict(orientation="h", y=1.1)
+        )
+        st.plotly_chart(fig_vph, use_container_width=True)
 
-with col2:
-    st.markdown("##### バズ加速度判定")
-    for _, row in df_summary.iterrows():
-        ratio = row['momentum_ratio']
-        if ratio > 1.2:
-            status = "🚀 急加速中"
-        elif ratio < 0.8:
-            status = "📉 減速傾向"
-        else:
-            status = "➡️ 安定維持"
+    with col2:
+        st.markdown("##### バズ加速度判定")
+        for _, row in df_summary.iterrows():
+            ratio = row.get('momentum_ratio', 1.0)
+            if ratio > 1.2:
+                status = "🚀 急加速中"
+            elif ratio < 0.8:
+                status = "📉 減速傾向"
+            else:
+                status = "➡️ 安定維持"
+                
+            cur_v = row.get('current_vph', 0)
+            life_v = row.get('lifetime_vph', 0)
             
-        cur_v = row['current_vph']
-        life_v = row['lifetime_vph']
-        
-        st.write(f"**{row['short_title']}**")
-        st.caption(f"バズ加速度: **{ratio}倍** ({status})")
-        st.write(f"・直近速度: `{cur_v}` 回/時")
-        st.write(f"・通算平均: `{life_v}` 回/時")
-        st.divider()
+            st.write(f"**{row['short_title']}**")
+            st.caption(f"バズ加速度: **{ratio}倍** ({status})")
+            st.write(f"・直近速度: `{cur_v}` 回/時")
+            st.write(f"・通算平均: `{life_v}` 回/時")
+            st.divider()
+else:
+    st.warning("⚠️ 分析対象の動画データがまだ読み込まれていません。サイドバーから動画IDが設定されているか確認してください。")
 
 # ==========================================
 # 機能 2:  競合新曲 Launch Tracker（初速レーダー）
