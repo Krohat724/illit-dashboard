@@ -288,7 +288,7 @@ if len(video_ids) == 0:
     st.stop()
 
 df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if not df_all.empty else pd.DataFrame()
-
+st.sidebar.caption(f" 読み込みデータ数: {len(df_filtered)}件")
 if not df_filtered.empty:
     df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
     if 'published_at' in df_filtered.columns:
