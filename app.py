@@ -211,13 +211,17 @@ def fetch_live_video_stats(v_ids, api_key):
         pass
     return live_data
 
-# Supabase全データ取得
+# Supabase全データ取得（APIキー認証・件数拡張版）
 @st.cache_data(ttl=60)
 def load_supabase_data():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return pd.DataFrame()
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc&limit=5000"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             return pd.DataFrame(res.json())
