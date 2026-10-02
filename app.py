@@ -297,7 +297,7 @@ if not df_filtered.empty:
 now_utc = datetime.now(timezone.utc)
 
 # ==========================================
-# 4. 指標計算ロジック（型エラー完全防止・確定差分版）
+# 4. 指標計算ロジック（IndexError完全防止・確定計算版）
 # ==========================================
 summary_data = []
 
@@ -305,51 +305,57 @@ missing_vids = [v for v in video_ids if df_filtered.empty or df_filtered[df_filt
 live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vids else {}
 
 for v_id in video_ids:
-    df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
+    # 該当動画のデータを抽出
+    if not df_filtered.empty and 'video_id' in df_filtered.columns:
+        df_v = df_filtered[df_filtered['video_id'].astype(str) == str(v_id)].copy()
+    else:
+        df_v = pd.DataFrame()
 
-    # DBにデータがない場合（APIから直接取得）
+    # データ整形とタイムスタンプ変換
+    if not df_v.empty:
+        df_v['timestamp'] = pd.to_datetime(df_v['timestamp'], utc=True, errors='coerce')
+        df_v = df_v.dropna(subset=['timestamp']).sort_values('timestamp').reset_index(drop=True)
+
+    # クレンジング後に0件となった場合はAPI取得にフォールバック（IndexError防止）
     if df_v.empty:
         if v_id in live_stats:
             ls = live_stats[v_id]
-            full_title = ls['title']
+            full_title = ls.get('title', 'Unknown')
             short_title = clean_title(full_title)
-            views = int(ls['views'])
-            pub_at = pd.to_datetime(ls['published_at'], utc=True)
+            views = int(ls.get('views', 0))
+            pub_at = pd.to_datetime(ls.get('published_at', now_utc.isoformat()), utc=True)
             pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
 
             lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
             lifetime_vph = round(views / lifetime_hours, 1)
+
+            likes = int(ls.get('likes', 0))
+            comments = int(ls.get('comments', 0))
 
             summary_data.append({
                 "video_id": v_id,
                 "full_title": full_title,
                 "short_title": short_title,
                 "views": views,
-                "likes": int(ls.get('likes', 0)),
-                "comments": int(ls.get('comments', 0)),
-                "like_rate": round((int(ls.get('likes', 0)) / views) * 100, 2) if views > 0 else 0,
-                "comment_rate": round((int(ls.get('comments', 0)) / views) * 100, 3) if views > 0 else 0,
-                "engagement_rate": round(((int(ls.get('likes', 0)) + int(ls.get('comments', 0))) / views) * 100, 2) if views > 0 else 0,
+                "likes": likes,
+                "comments": comments,
+                "like_rate": round((likes / views) * 100, 2) if views > 0 else 0,
+                "comment_rate": round((comments / views) * 100, 3) if views > 0 else 0,
+                "engagement_rate": round(((likes + comments) / views) * 100, 2) if views > 0 else 0,
                 "published_at_jst": pub_at_jst,
                 "lifetime_hours": round(lifetime_hours, 1),
                 "lifetime_vph": lifetime_vph,
-                "current_vph": lifetime_vph,  # 初回ログなし時は同値
+                "current_vph": lifetime_vph,
                 "momentum_ratio": 1.0,
                 "pub_day": pub_at_jst.strftime('%A'),
                 "pub_hour": pub_at_jst.hour
             })
         continue
 
-    # --- DB蓄積データが存在する場合（★ここで型を強制変換）---
-    # 1. timestamp を確実に Python datetime 型へ変換
-    df_v['timestamp'] = pd.to_datetime(df_v['timestamp'], utc=True, errors='coerce')
-    df_v = df_v.dropna(subset=['timestamp']).sort_values('timestamp').reset_index(drop=True)
-
-    # 2. views を数値型へ変換
-    if 'views' in df_v.columns:
-        df_v['views_num'] = pd.to_numeric(df_v['views'], errors='coerce').fillna(0).astype(int)
-    elif 'view_count' in df_v.columns:
-        df_v['views_num'] = pd.to_numeric(df_v['view_count'], errors='coerce').fillna(0).astype(int)
+    # --- DB蓄積データが存在する場合（1件以上保証） ---
+    views_col = 'views' if 'views' in df_v.columns else ('view_count' if 'view_count' in df_v.columns else None)
+    if views_col:
+        df_v['views_num'] = pd.to_numeric(df_v[views_col], errors='coerce').fillna(0).astype(int)
     else:
         df_v['views_num'] = 0
 
@@ -376,7 +382,7 @@ for v_id in video_ids:
     lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
     lifetime_vph = round(views / lifetime_hours, 1)
 
-    # ② 直近のバズ勢い (Current VPH) の厳密計算
+    # ② 直近のバズ勢い (Current VPH)
     latest_time = latest_row['timestamp']
     recent_df = df_v[df_v['timestamp'] >= (latest_time - pd.Timedelta(hours=24))]
 
@@ -384,14 +390,13 @@ for v_id in video_ids:
     if len(recent_df) > 1:
         past_row = recent_df.iloc[0]  # 直近24時間内で一番古いログ
     elif len(df_v) > 1:
-        past_row = df_v.iloc[-2]      # ログが1件より多ければ直近1つ前
+        past_row = df_v.iloc[-2]      # 蓄積ログが2件以上なら1つ前のログ
 
     if past_row is not None:
         past_time = past_row['timestamp']
         tracking_hours = (latest_time - past_time).total_seconds() / 3600
         
-        # 3分(0.05時間)以上離れていれば時速を計算
-        if tracking_hours > 0.05:
+        if tracking_hours > 0.01: # 36秒以上のログ間隔があれば時速換算
             past_views = int(past_row['views_num'])
             views_diff = max(views - past_views, 0)
             current_vph = round(views_diff / tracking_hours, 1)
@@ -423,11 +428,9 @@ for v_id in video_ids:
         "pub_day": pub_at_jst.strftime('%A'),
         "pub_hour": pub_at_jst.hour
     })
-if summary_data:
-    df_summary = pd.DataFrame(summary_data)
-else:
-    st.warning(" 有効なYouTube URLを入力してください。")
-    st.stop()
+
+# DataFrame化
+df_summary = pd.DataFrame(summary_data)
 
 # ==========================================
 # 機能 1: VPHモメンタム比較（修正版）
