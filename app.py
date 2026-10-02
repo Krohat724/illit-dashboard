@@ -367,7 +367,7 @@ for v_id in video_ids:
     lifetime_vph = round(views / lifetime_hours, 1)
 # timestampを日時型に変換
     df_v['timestamp'] = pd.to_datetime(df_v['timestamp'])
-        latest_time = pd.to_datetime(latest_row['timestamp'])
+    latest_time = pd.to_datetime(latest_row['timestamp'])
 
         # ① 通算ヒットペース (Lifetime VPH)
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
