@@ -296,17 +296,17 @@ if not df_filtered.empty:
 
 now_utc = datetime.now(timezone.utc)
 
-# ==========================================
-# 4. 指標計算ロジック（分かりやすい言葉に変換）
-# ==========================================
+# 4. 指標計算ロジック
 summary_data = []
 
 missing_vids = [v for v in video_ids if df_filtered.empty or df_filtered[df_filtered['video_id'] == v].empty]
 live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vids else {}
 
 for v_id in video_ids:
-    df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp') if not df_filtered.empty else pd.DataFrame()
-    
+    # 該当動画のデータを抽出
+    df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
+
+    # DBにデータが存在しない場合（YouTube APIから最新1件を取得）
     if df_v.empty:
         if v_id in live_stats:
             ls = live_stats[v_id]
@@ -315,7 +315,7 @@ for v_id in video_ids:
             views = ls['views']
             pub_at = pd.to_datetime(ls['published_at'], utc=True)
             pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
-            
+
             lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
             lifetime_vph = round(views / lifetime_hours, 1)
             current_vph = lifetime_vph
@@ -325,7 +325,7 @@ for v_id in video_ids:
             like_rate = round((likes / views) * 100, 2) if views > 0 else 0
             comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
             engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
-            
+
             summary_data.append({
                 "video_id": v_id,
                 "full_title": full_title,
@@ -333,9 +333,9 @@ for v_id in video_ids:
                 "views": views,
                 "likes": likes,
                 "comments": comments,
-                "like_rate": like_rate,           # 高評価率 (%)
-                "comment_rate": comment_rate,     # コメント率 (%)
-                "engagement_rate": engagement_rate, # 総合熱量 (%)
+                "like_rate": like_rate,
+                "comment_rate": comment_rate,
+                "engagement_rate": engagement_rate,
                 "published_at_jst": pub_at_jst,
                 "lifetime_hours": round(lifetime_hours, 1),
                 "lifetime_vph": lifetime_vph,
@@ -346,67 +346,67 @@ for v_id in video_ids:
             })
         continue
 
+    # --- DBに蓄積データが存在する場合 ---
+    # ★ timestampを確実に日時型(Datetime)に変換して古い順にソート
+    df_v['timestamp'] = pd.to_datetime(df_v['timestamp'], utc=True)
+    df_v = df_v.sort_values('timestamp').reset_index(drop=True)
+
     latest_row = df_v.iloc[-1]
-    first_row = df_v.iloc[0]
-    
-    
-    # 蓄積データからタイトルを取得（空・NaN・Unknownの場合はYouTube APIから強制取得して補填）
+
+    # タイトル取得
     full_title = latest_row.get('title')
     if pd.isna(full_title) or not full_title or str(full_title).lower() in ['none', 'nan', 'unknown']:
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
         full_title = snippets.get(v_id, {}).get('title', 'Unknown')
-        
+
     short_title = clean_title(full_title)
     views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-    
+
+    # 投稿日時の処理
     pub_at_raw = latest_row.get('published_at')
     if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
         pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
-        
+
     pub_at = pd.to_datetime(pub_at_raw, utc=True)
     pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
-    
-    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
-    lifetime_vph = round(views / lifetime_hours, 1)
-# timestampを日時型に変換
-    df_v['timestamp'] = pd.to_datetime(df_v['timestamp'])
-    latest_time = pd.to_datetime(latest_row['timestamp'])
 
-        # ① 通算ヒットペース (Lifetime VPH)
+    # ① 通算ヒットペース (Lifetime VPH)
     lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
     lifetime_vph = round(views / lifetime_hours, 1)
 
-        # ② 現在のバズ勢い (直近最大24時間の「瞬間風速」)
+    # ② 直近のバズ勢い (Current VPH) - 24時間前または前回のログと比較
+    latest_time = latest_row['timestamp']
     recent_df = df_v[df_v['timestamp'] >= (latest_time - pd.Timedelta(hours=24))]
-        
+
     past_row = None
     if len(recent_df) > 1:
-        past_row = recent_df.iloc[0]  # 直近24時間の中で一番古いデータ
+        past_row = recent_df.iloc[0]  # 24時間以内で最も古いログ
     elif len(df_v) > 1:
-        past_row = df_v.iloc[-2]      # なければ直近1つ前のデータ
+        past_row = df_v.iloc[-2]      # 24時間以上の場合は直近1つ前のログ
 
     if past_row is not None:
-        past_time = pd.to_datetime(past_row['timestamp'])
+        past_time = past_row['timestamp']
         tracking_hours = (latest_time - past_time).total_seconds() / 3600
-            
-            # 3分(0.05時間)以上のデータ間隔があれば直近時速を計算
-        if tracking_hours > 0.05:
+        
+        if tracking_hours > 0.05:  # 3分以上のデータ間隔があれば時速計算
             past_views = int(past_row.get('views', past_row.get('view_count', 0)))
             views_diff = max(views - past_views, 0)
             current_vph = round(views_diff / tracking_hours, 1)
         else:
             current_vph = lifetime_vph
     else:
-            current_vph = lifetime_vph
+        current_vph = lifetime_vph
 
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+
+    # 各種エンゲージメント計算
     likes = int(latest_row.get('likes', 0))
     comments = int(latest_row.get('comments', 0))
     like_rate = round((likes / views) * 100, 2) if views > 0 else 0
     comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
     engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
-    
+
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
@@ -414,9 +414,9 @@ for v_id in video_ids:
         "views": views,
         "likes": likes,
         "comments": comments,
-        "like_rate": like_rate,           # 高評価率 (%)
-        "comment_rate": comment_rate,     # コメント率 (%)
-        "engagement_rate": engagement_rate, # 総合熱量 (%)
+        "like_rate": like_rate,
+        "comment_rate": comment_rate,
+        "engagement_rate": engagement_rate,
         "published_at_jst": pub_at_jst,
         "lifetime_hours": round(lifetime_hours, 1),
         "lifetime_vph": lifetime_vph,
