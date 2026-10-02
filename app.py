@@ -217,7 +217,7 @@ def load_supabase_data():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return pd.DataFrame()
     try:
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc&limit=5000
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc&limit=5000"
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             return pd.DataFrame(res.json())
