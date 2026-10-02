@@ -296,73 +296,74 @@ if not df_filtered.empty:
 
 now_utc = datetime.now(timezone.utc)
 
-# 4. 指標計算ロジック
+# ==========================================
+# 4. 指標計算ロジック（型エラー完全防止・確定差分版）
+# ==========================================
 summary_data = []
 
 missing_vids = [v for v in video_ids if df_filtered.empty or df_filtered[df_filtered['video_id'] == v].empty]
 live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vids else {}
 
 for v_id in video_ids:
-    # 該当動画のデータを抽出
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
 
-    # DBにデータが存在しない場合（YouTube APIから最新1件を取得）
+    # DBにデータがない場合（APIから直接取得）
     if df_v.empty:
         if v_id in live_stats:
             ls = live_stats[v_id]
             full_title = ls['title']
             short_title = clean_title(full_title)
-            views = ls['views']
+            views = int(ls['views'])
             pub_at = pd.to_datetime(ls['published_at'], utc=True)
             pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
 
             lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
             lifetime_vph = round(views / lifetime_hours, 1)
-            current_vph = lifetime_vph
-            momentum_ratio = 1.0
-            likes = ls.get('likes', 0)
-            comments = ls.get('comments', 0)
-            like_rate = round((likes / views) * 100, 2) if views > 0 else 0
-            comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
-            engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
 
             summary_data.append({
                 "video_id": v_id,
                 "full_title": full_title,
                 "short_title": short_title,
                 "views": views,
-                "likes": likes,
-                "comments": comments,
-                "like_rate": like_rate,
-                "comment_rate": comment_rate,
-                "engagement_rate": engagement_rate,
+                "likes": int(ls.get('likes', 0)),
+                "comments": int(ls.get('comments', 0)),
+                "like_rate": round((int(ls.get('likes', 0)) / views) * 100, 2) if views > 0 else 0,
+                "comment_rate": round((int(ls.get('comments', 0)) / views) * 100, 3) if views > 0 else 0,
+                "engagement_rate": round(((int(ls.get('likes', 0)) + int(ls.get('comments', 0))) / views) * 100, 2) if views > 0 else 0,
                 "published_at_jst": pub_at_jst,
                 "lifetime_hours": round(lifetime_hours, 1),
                 "lifetime_vph": lifetime_vph,
-                "current_vph": current_vph,
-                "momentum_ratio": momentum_ratio,
+                "current_vph": lifetime_vph,  # 初回ログなし時は同値
+                "momentum_ratio": 1.0,
                 "pub_day": pub_at_jst.strftime('%A'),
                 "pub_hour": pub_at_jst.hour
             })
         continue
 
-    # --- DBに蓄積データが存在する場合 ---
-    # ★ timestampを確実に日時型(Datetime)に変換して古い順にソート
-    df_v['timestamp'] = pd.to_datetime(df_v['timestamp'], utc=True)
-    df_v = df_v.sort_values('timestamp').reset_index(drop=True)
+    # --- DB蓄積データが存在する場合（★ここで型を強制変換）---
+    # 1. timestamp を確実に Python datetime 型へ変換
+    df_v['timestamp'] = pd.to_datetime(df_v['timestamp'], utc=True, errors='coerce')
+    df_v = df_v.dropna(subset=['timestamp']).sort_values('timestamp').reset_index(drop=True)
+
+    # 2. views を数値型へ変換
+    if 'views' in df_v.columns:
+        df_v['views_num'] = pd.to_numeric(df_v['views'], errors='coerce').fillna(0).astype(int)
+    elif 'view_count' in df_v.columns:
+        df_v['views_num'] = pd.to_numeric(df_v['view_count'], errors='coerce').fillna(0).astype(int)
+    else:
+        df_v['views_num'] = 0
 
     latest_row = df_v.iloc[-1]
+    views = int(latest_row['views_num'])
 
     # タイトル取得
     full_title = latest_row.get('title')
     if pd.isna(full_title) or not full_title or str(full_title).lower() in ['none', 'nan', 'unknown']:
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
         full_title = snippets.get(v_id, {}).get('title', 'Unknown')
-
     short_title = clean_title(full_title)
-    views = int(latest_row.get('views', latest_row.get('view_count', 0)))
 
-    # 投稿日時の処理
+    # 投稿日時
     pub_at_raw = latest_row.get('published_at')
     if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
@@ -375,22 +376,23 @@ for v_id in video_ids:
     lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
     lifetime_vph = round(views / lifetime_hours, 1)
 
-    # ② 直近のバズ勢い (Current VPH) - 24時間前または前回のログと比較
+    # ② 直近のバズ勢い (Current VPH) の厳密計算
     latest_time = latest_row['timestamp']
     recent_df = df_v[df_v['timestamp'] >= (latest_time - pd.Timedelta(hours=24))]
 
     past_row = None
     if len(recent_df) > 1:
-        past_row = recent_df.iloc[0]  # 24時間以内で最も古いログ
+        past_row = recent_df.iloc[0]  # 直近24時間内で一番古いログ
     elif len(df_v) > 1:
-        past_row = df_v.iloc[-2]      # 24時間以上の場合は直近1つ前のログ
+        past_row = df_v.iloc[-2]      # ログが1件より多ければ直近1つ前
 
     if past_row is not None:
         past_time = past_row['timestamp']
         tracking_hours = (latest_time - past_time).total_seconds() / 3600
         
-        if tracking_hours > 0.05:  # 3分以上のデータ間隔があれば時速計算
-            past_views = int(past_row.get('views', past_row.get('view_count', 0)))
+        # 3分(0.05時間)以上離れていれば時速を計算
+        if tracking_hours > 0.05:
+            past_views = int(past_row['views_num'])
             views_diff = max(views - past_views, 0)
             current_vph = round(views_diff / tracking_hours, 1)
         else:
@@ -400,12 +402,8 @@ for v_id in video_ids:
 
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
 
-    # 各種エンゲージメント計算
-    likes = int(latest_row.get('likes', 0))
-    comments = int(latest_row.get('comments', 0))
-    like_rate = round((likes / views) * 100, 2) if views > 0 else 0
-    comment_rate = round((comments / views) * 100, 3) if views > 0 else 0
-    engagement_rate = round(((likes + comments) / views) * 100, 2) if views > 0 else 0
+    likes = int(pd.to_numeric(latest_row.get('likes', 0), errors='coerce') or 0)
+    comments = int(pd.to_numeric(latest_row.get('comments', 0), errors='coerce') or 0)
 
     summary_data.append({
         "video_id": v_id,
@@ -414,9 +412,9 @@ for v_id in video_ids:
         "views": views,
         "likes": likes,
         "comments": comments,
-        "like_rate": like_rate,
-        "comment_rate": comment_rate,
-        "engagement_rate": engagement_rate,
+        "like_rate": round((likes / views) * 100, 2) if views > 0 else 0,
+        "comment_rate": round((comments / views) * 100, 3) if views > 0 else 0,
+        "engagement_rate": round(((likes + comments) / views) * 100, 2) if views > 0 else 0,
         "published_at_jst": pub_at_jst,
         "lifetime_hours": round(lifetime_hours, 1),
         "lifetime_vph": lifetime_vph,
@@ -425,7 +423,6 @@ for v_id in video_ids:
         "pub_day": pub_at_jst.strftime('%A'),
         "pub_hour": pub_at_jst.hour
     })
-
 if summary_data:
     df_summary = pd.DataFrame(summary_data)
 else:
@@ -433,7 +430,7 @@ else:
     st.stop()
 
 # ==========================================
-# 機能 1:  VPHモメンタム比較
+# 機能 1: VPHモメンタム比較（修正版）
 # ==========================================
 st.subheader("1. VPHモメンタム比較")
 st.markdown("""
@@ -448,20 +445,20 @@ with col1:
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['lifetime_vph'],
-        name='平均の伸び具合',
+        name='通算ヒットペース (青)',
         marker_color='#1f77b4',
         hovertext=df_summary['full_title']
     ))
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
-        name='現在のバズ勢い ',
+        name='現在のバズ勢い (オレンジ)',
         marker_color='#ff7f0e',
         hovertext=df_summary['full_title']
     ))
     fig_vph.update_layout(
         barmode='group',
-        title="動画別 再生速度（VPH）比較",
+        title="動画別 再生速度 (VPH) 比較",
         xaxis_title="動画タイトル",
         yaxis_title="再生増加数 (回 / 時間)",
         legend=dict(orientation="h", y=1.1)
@@ -469,13 +466,23 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("#####  バズ加速率判定")
+    st.markdown("##### バズ加速度判定")
     for _, row in df_summary.iterrows():
-        status = " 急加速中" if row['momentum_ratio'] > 1.2 else (" 減速傾向" if row['momentum_ratio'] < 0.8 else " 安定維持")
+        ratio = row['momentum_ratio']
+        if ratio > 1.2:
+            status = "🚀 急加速中"
+        elif ratio < 0.8:
+            status = "📉 減速傾向"
+        else:
+            status = "➡️ 安定維持"
+            
+        cur_v = row['current_vph']
+        life_v = row['lifetime_vph']
+        
         st.write(f"**{row['short_title']}**")
-        st.caption(f"バズ加速率: **{row['momentum_ratio']}倍** ({status})")
-        st.write(f"・直近速度: `{row['current_vph']:,} 回/時`")
-        st.write(f"・通算平均: `{row['lifetime_vph']:,} 回/時`")
+        st.caption(f"バズ加速度: **{ratio}倍** ({status})")
+        st.write(f"・直近速度: `{cur_v}` 回/時")
+        st.write(f"・通算平均: `{life_v}` 回/時")
         st.divider()
 
 # ==========================================
