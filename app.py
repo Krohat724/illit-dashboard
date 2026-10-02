@@ -61,8 +61,6 @@ def clean_title(title, max_len=16):
     # 不要な装飾語のカット
     remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
     cleaned = title
-    for w in remove_words:
-        cleaned = cleaned.replace(w, "")
     cleaned = cleaned.strip()
     if len(cleaned) > max_len:
         return cleaned[:max_len] + "…"
