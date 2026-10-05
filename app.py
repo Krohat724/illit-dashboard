@@ -210,7 +210,7 @@ if st.button("最新50件のコメントをGeminiで解析する"):
             st.subheader(" 違和感・ネガティブ要素")
             st.write(ai_res.negative_points)
 
-        except Exception as e:
+    except Exception as e:
                 # クラッシュさせずに画面上に本当のエラーメッセージを表示する
                 st.error(f"❌ Gemini API実行エラー: {e}")
         else:
