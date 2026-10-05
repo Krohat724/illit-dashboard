@@ -402,21 +402,50 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("##### バズ加速率判定")
+    st.markdown("#####  バズ加速率 ＆ 勢い判定")
+    
+    # 比較グループ全体での平均VPHを算出
+    avg_group_vph = df_summary['lifetime_vph'].mean()
+    
+    # 全員の加速率がほぼ1.0（データ蓄積初期）かどうか判定
+    ratio_diff = df_summary['momentum_ratio'].max() - df_summary['momentum_ratio'].min()
+    is_initial_stage = ratio_diff < 0.05
+
     for _, row in df_summary.iterrows():
         ratio = row['momentum_ratio']
-        # +/- 5% の変化で感度高く判定
-        if ratio >= 1.05:
-            status = " 急加速中"
-        elif ratio <= 0.95:
-            status = " 減速傾向"
-        else:
-            status = "➡ 安定維持"
+        c_vph = row['current_vph']
+        l_vph = row['lifetime_vph']
+
+        if is_initial_stage:
+            # 【初期・データ不足時】選択されたグループ内での相対速度（平均比）でくっきり差をつける
+            rel_score = (l_vph / avg_group_vph) if avg_group_vph > 0 else 1.0
             
-        st.write(f"**{row['short_title']}**")
-        st.caption(f"バズ加速率: **{ratio}倍** ({status})")
-        st.write(f"・直近速度: `{row['current_vph']:,} 回/時`")
-        st.write(f"・通算平均: `{row['lifetime_vph']:,} 回/時`")
+            if rel_score >= 1.3:
+                status = " Sランク (グループ最速)"
+            elif rel_score >= 1.05:
+                status = " Aランク (平均超えペース)"
+            elif rel_score >= 0.8:
+                status = " Bランク (平均的)"
+            else:
+                status = "　Cランク (ゆるやか)"
+                
+            st.write(f"**{row['short_title']}**")
+            st.caption(f"グループ内相対勢い: **{status}**")
+            st.caption(f"(全体平均の `{round(rel_score, 2)}倍` のスピード)")
+        else:
+            # 【蓄積データあり】直近のバズ再加速率（1%の変化でも敏感に反応）
+            if ratio >= 1.02:
+                status = " 再加速中 (バズ発生)"
+            elif ratio <= 0.98:
+                status = " 落ち着き傾向 (減速)"
+            else:
+                status = " 安定維持"
+                
+            st.write(f"**{row['short_title']}**")
+            st.caption(f"バズ加速率: **{ratio}倍** ({status})")
+
+        st.write(f"・直近速度: `{c_vph:,} 回/時`")
+        st.write(f"・通算平均: `{l_vph:,} 回/時`")
         st.divider()
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
