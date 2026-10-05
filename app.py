@@ -401,7 +401,7 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("##### 🚀 スピード & 勢い判定 (絶対評価)")
+    st.markdown("#####  スピード & 勢い判定 (絶対評価)")
 
     for _, row in df_summary.iterrows():
         ratio = row['momentum_ratio']
