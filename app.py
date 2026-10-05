@@ -200,15 +200,19 @@ if st.button("最新50件のコメントをGeminiで解析する"):
             st.session_state['ai_target_title'] = selected_video_title
             
             st.success("Gemini解析完了！")
-            st.subheader("👍 ファンが褒めているポイント")
+            st.subheader(" ファンが褒めているポイント")
             for pt in ai_res.praise_points:
                 st.write(f"- {pt}")
                 
-            st.subheader("🌍 海外ファンの反応")
+            st.subheader(" 海外ファンの反応")
             st.write(ai_res.overseas_reaction)
             
-            st.subheader("⚠️ 違和感・ネガティブ要素")
+            st.subheader(" 違和感・ネガティブ要素")
             st.write(ai_res.negative_points)
+
+        except Exception as e:
+                # クラッシュさせずに画面上に本当のエラーメッセージを表示する
+                st.error(f"❌ Gemini API実行エラー: {e}")
         else:
             st.warning("コメントが取得できないか、オフになっています。")
 
