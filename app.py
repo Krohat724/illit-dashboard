@@ -215,7 +215,7 @@ for v_id in video_ids:
             ls = live_stats[v_id]
             # DBにタイトルが無い（NaNやNone）場合はYouTube APIから自動補填
             full_title = latest_row.get('title')
-              if pd.isna(full_title) or str(full_title).strip() in ['None', 'nan', 'Unknown', '']:
+            if pd.isna(full_title) or str(full_title).strip() in ['None', 'nan', 'Unknown', '']:
                  snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
                  full_title = snippets.get(v_id, {}).get('title', 'Unknown')
             short_title = clean_title(full_title)
