@@ -12,7 +12,7 @@ import google.generativeai as genai
 # 0. ページ基本設定 & カスタムCSS
 # ==========================================
 st.set_page_config(
-    page_title=" 競合バズ解析 SaaS",
+    page_title=" YouTube競合バズ解析ダッシュボード",
     layout="wide"
 )
 
@@ -247,8 +247,7 @@ if video_ids and SUPABASE_URL and SUPABASE_KEY:
 # ==========================================
 # 3. メイン画面ヘッダー
 # ==========================================
-st.title("競合ヒットスピード＆バズ解析")
-st.caption("リアルタイムのバズ勢い × 投稿日時の勝ちパターン分析 SaaS")
+st.title("YouTube競合バズ解析ダッシュボード")
 
 df_all = load_supabase_data()
 
@@ -368,7 +367,7 @@ else:
 # ==========================================
 # 機能 1:  2軸スピード比較（通算ヒットペース vs 現在のバズ勢い）
 # ==========================================
-st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
+st.subheader("1. VPHモメンタム比較")
 st.markdown("""
 * **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度（過去動画同士の公平な比較基準）
 * **現在のバズ勢い（直近時速）**: ツール登録後のリアルタイム増加速度（今まさにバズっているか）
@@ -450,7 +449,7 @@ with col2:
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
 # =========================================
-st.subheader("2. 競合新曲 Launch Tracker（初速レーダー）")
+st.subheader("2. 新曲リリース自動追跡")
 st.caption("公開直後（72時間以内）の新曲MVを自動検知し、初期ロケットスタートの伸びを監視")
 
 df_new_releases = df_summary[df_summary['lifetime_hours'] <= 72]
@@ -461,7 +460,7 @@ if not df_new_releases.empty:
     for idx, (_, row) in enumerate(df_new_releases.iterrows()):
         with cols[idx % 4]:
             st.metric(
-                label=f"🆕 {row['short_title']}",
+                label=f" {row['short_title']}",
                 value=f"{row['views']:,} 回",
                 delta=f"初速 {row['lifetime_vph']:,} 回/時"
             )
@@ -472,7 +471,7 @@ else:
 # ==========================================
 # 機能 3: 投稿日時 × バズ速度マトリクス（勝ちパターン分析）
 # ==========================================
-st.subheader("3.  投稿日時 × バズ速度（JST 勝ちパターン分析）")
+st.subheader("3. ベスト投稿日時アナリティクス")
 st.markdown("競合動画の `公開曜日` と `公開時間帯（日本時間 JST）` を分析し、**どのタイミングで出された動画が最も高い伸び（通算ヒットペース）を記録しているか** を可視化します。")
 
 days_jp = {'Monday':'月', 'Tuesday':'火', 'Wednesday':'水', 'Thursday':'木', 'Friday':'金', 'Saturday':'土', 'Sunday':'日'}
@@ -505,7 +504,7 @@ from plotly.subplots import make_subplots
 # ==========================================
 # 機能 4: ファンダム熱量スコア（分離グラフ & 相対ランク判定）
 # ==========================================
-st.subheader("4.  ファンダム熱量スコア（ファンエンゲージメント分析）")
+st.subheader("4.  ファンダム熱量スコア")
 st.markdown("""
 再生数に対してファンがどれだけ積極的に高評価・コメントを残しているかを測定します。
 高評価とコメントの比率を個別に分析し、比較対象の中での相対的な熱量ランクを算出します。
