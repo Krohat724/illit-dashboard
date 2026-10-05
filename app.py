@@ -54,20 +54,31 @@ def extract_video_id(url):
         return url
     return None
 
-# 動画タイトルをグラフ用に短縮・整形する関数
+# 動画タイトルをグラフ用に短縮・整形する関数（型エラーガード完全版）
 def clean_title(title, max_len=16):
-    if not title:
+    # NaNやNone、文字列以外が来た場合の安全チェック
+    if pd.isna(title) or title is None:
         return "Unknown"
-    # 不要な装飾語のカット
+    
+    # 強制的に文字列型（str）へ変換
+    cleaned = str(title)
+    
+    # 不要な文字の削除
     remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
-    cleaned = title
     for w in remove_words:
         cleaned = cleaned.replace(w, "")
+        
     cleaned = cleaned.strip()
+    
+    # 文字削除の結果、空文字になった場合
+    if not cleaned:
+        return "Unknown"
+        
+    # 指定文字数に短縮
     if len(cleaned) > max_len:
         return cleaned[:max_len] + "…"
+        
     return cleaned
-
 # YouTube APIから snippet を自動取得
 @st.cache_data(ttl=3600)
 def fetch_video_snippets(v_ids, api_key):
