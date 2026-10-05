@@ -242,11 +242,13 @@ for v_id in video_ids:
     if df_v.empty:
         ls = live_stats.get(v_id, {})
         views = ls.get('views', 0)
+        likes = ls.get('likes', 0)
+        comments = ls.get('comments', 0)
+        
         pub_at_raw = ls.get('published_at', now_utc.isoformat())
         pub_at = pd.to_datetime(pub_at_raw, utc=True)
         pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
         
-        # 確実にタイトルを取得
         full_title = get_real_title(v_id, ls.get('title'), YOUTUBE_API_KEY)
         short_title = clean_title(full_title)
         
@@ -260,6 +262,8 @@ for v_id in video_ids:
             "full_title": full_title,
             "short_title": short_title,
             "views": views,
+            "likes": likes,
+            "comments": comments,
             "published_at_jst": pub_at_jst,
             "lifetime_hours": round(lifetime_hours, 1),
             "lifetime_vph": lifetime_vph,
@@ -275,8 +279,10 @@ for v_id in video_ids:
     first_row = df_v.iloc[0]
     
     views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-    pub_at_raw = latest_row.get('published_at')
+    likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
+    comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
     
+    pub_at_raw = latest_row.get('published_at')
     if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
         pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
@@ -284,7 +290,6 @@ for v_id in video_ids:
     pub_at = pd.to_datetime(pub_at_raw, utc=True)
     pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
     
-    # 確実にタイトルを取得
     full_title = get_real_title(v_id, latest_row.get('title'), YOUTUBE_API_KEY)
     short_title = clean_title(full_title)
     
@@ -305,6 +310,8 @@ for v_id in video_ids:
         "full_title": full_title,
         "short_title": short_title,
         "views": views,
+        "likes": likes,
+        "comments": comments,
         "published_at_jst": pub_at_jst,
         "lifetime_hours": round(lifetime_hours, 1),
         "lifetime_vph": lifetime_vph,
@@ -417,6 +424,58 @@ if not matrix_df.empty:
     best_row = df_summary.loc[df_summary['lifetime_vph'].idxmax()]
     st.success(f" **競合の最高ヒットタイミング分析結果**\n\n"
                f"最も高い初速・伸び（`{best_row['lifetime_vph']:,} 回/時`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['full_title']}`）です！")
+
+
+# ==========================================
+# 機能 4:  ファンダム熱量スコア（エンゲージメント率算出）
+# ==========================================
+st.subheader("4.  ファンダム熱量スコア（エンゲージメント率分析）")
+st.markdown("""
+再生数に対してファンがどれだけ積極的に高評価・コメントを残しているかを数値化し、**「単なる認知（流し見）」** か **「コアファンの熱量」** かを識別します。
+""")
+
+# エンゲージメント計算
+df_summary['like_rate'] = (df_summary['likes'] / df_summary['views'] * 100).round(2)
+df_summary['comment_rate'] = (df_summary['comments'] / df_summary['views'] * 100).round(3)
+# コメントは高評価よりハードルが高いため5倍の重み付けでスコア化
+df_summary['fandom_score'] = (((df_summary['likes'] + (df_summary['comments'] * 5)) / df_summary['views']) * 100).round(2)
+
+col_f1, col_f2 = st.columns([2, 1])
+
+with col_f1:
+    # 熱量スコア比較グラフ
+    fig_fandom = go.Figure()
+    fig_fandom.add_trace(go.Bar(
+        x=df_summary['short_title'],
+        y=df_summary['like_rate'],
+        name='高評価率 (%)',
+        marker_color='#2ca02c'
+    ))
+    fig_fandom.add_trace(go.Bar(
+        x=df_summary['short_title'],
+        y=df_summary['comment_rate'] * 10, # 視覚比較のため10倍表示
+        name='コメント率 (% x10)',
+        marker_color='#d62728'
+    ))
+    fig_fandom.update_layout(
+        barmode='group',
+        title="動画別 エンゲージメント率 比較",
+        xaxis_title="動画タイトル",
+        yaxis_title="エンゲージメント率 (%)",
+        legend=dict(orientation="h", y=1.1)
+    )
+    st.plotly_chart(fig_fandom, use_container_width=True)
+
+with col_f2:
+    st.markdown("#####  ファンダム熱量ランキング")
+    df_fandom_sorted = df_summary.sort_values('fandom_score', ascending=False)
+    
+    for rank, (_, row) in enumerate(df_fandom_sorted.iterrows(), 1):
+        st.write(f"**#{rank} {row['short_title']}**")
+        st.write(f"・熱量スコア: **`{row['fandom_score']} 点`**")
+        st.caption(f" 高評価率: `{row['like_rate']}%` ({row['likes']:,}件)")
+        st.caption(f" コメント率: `{row['comment_rate']}%` ({row['comments']:,}件)")
+        st.divider()
 
 # ==========================================
 # 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
