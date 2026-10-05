@@ -94,68 +94,80 @@ if not yt_data:
     st.stop()
 
 # ==========================================
-# 機能 1: 公開後スピード比較（初速ペース分析・全自動補填版）
+# 機能 1: 公開後スピード＆追跡ペース分析（高度比較版）
 # ==========================================
-st.header("1. 🚀 公開後スピード比較（初速ペース分析）")
+st.header("1. 🚀 競合成長スピード & 初速ペース分析")
 
 if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
     df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy()
     
-    # ★【自動化】URLから渡された動画IDの公開日時(published_at)をYouTube APIから全自動取得
+    # 1. 公開日時の補填処理
     @st.cache_data(ttl=3600)
     def fetch_published_at_auto(v_ids, key):
         pub_map = {}
-        if not v_ids or not key:
-            return pub_map
+        if not v_ids or not key: return pub_map
         try:
             yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={','.join(v_ids)}&key={key}"
             res = requests.get(yt_url).json()
             for item in res.get("items", []):
                 pub_map[item["id"]] = item["snippet"].get("publishedAt")
-        except Exception:
-            pass
+        except Exception: pass
         return pub_map
 
-    # APIから最新の公開日時マップを取得
     pub_map = fetch_published_at_auto(video_ids, API_KEY)
-    
-    # published_at カラムがない、またはNoneの場合は自動で埋める
-    if 'published_at' not in df_filtered.columns:
-        df_filtered['published_at'] = None
-        
+    if 'published_at' not in df_filtered.columns: df_filtered['published_at'] = None
     df_filtered['published_at'] = df_filtered.apply(
         lambda row: pub_map.get(row['video_id']) if (pd.isna(row['published_at']) or str(row['published_at']) == 'None') else row['published_at'],
         axis=1
     )
 
-    # 日時データをUTC型に統一変換
+    # 日時変換
     df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp'], utc=True)
     df_filtered['published_at'] = pd.to_datetime(df_filtered['published_at'], utc=True)
-    
-    # 経過時間の計算 (取得日時 - 公開日時)
-    df_filtered['elapsed_hours'] = ((df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 3600).round(1)
-    df_filtered['elapsed_days'] = (df_filtered['elapsed_hours'] / 24).round(1)
-    
-    # グラフ描画UI
-    col_unit, col_metric = st.columns(2)
-    with col_unit:
-        unit_choice = st.radio("X軸の単位を選択", ["経過時間 (Hours)", "経過日数 (Days)"], horizontal=True)
+
+    # 2. 追跡開始日時（各動画の最古のデータ取得日）を算出
+    first_seen_map = df_filtered.groupby('video_id')['timestamp'].min().to_dict()
+    df_filtered['first_seen'] = df_filtered['video_id'].map(first_seen_map)
+
+    # 3. モード選択UI
+    col_mode, col_metric = st.columns(2)
+    with col_mode:
+        mode = st.radio("基準軸を選択", ["① 追跡開始日基準 (Day 0スタート)", "② 動画公開日基準 (実際の公開日)"], horizontal=False)
     with col_metric:
-        y_choice = st.selectbox("Y軸の指標", ["views", "likes", "comments"], format_func=lambda x: {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[x])
+        y_choice = st.selectbox("表示指標", ["views", "views_gained", "likes", "comments"], 
+                                format_func=lambda x: {
+                                    "views":"累計再生回数", 
+                                    "views_gained":"追跡開始からの増加再生数 (+0〜)", 
+                                    "likes":"高評価数", 
+                                    "comments":"コメント数"
+                                }[x])
 
-    x_col = 'elapsed_hours' if "Hours" in unit_choice else 'elapsed_days'
-    x_label = '公開からの経過時間 (時間)' if "Hours" in unit_choice else '経過日数 (日)'
-    y_label = {"views":"再生回数", "likes":"高評価数", "comments":"コメント数"}[y_choice]
+    # 4. 増加量（views_gained）の計算
+    first_val_map = df_filtered.groupby('video_id')[y_choice if y_choice != 'views_gained' else 'views'].transform('first')
+    df_filtered['views_gained'] = df_filtered['views'] - df_filtered.groupby('video_id')['views'].transform('first')
 
-    # Plotlyで初速比較グラフを表示
+    # X軸の計算（基準軸の切替）
+    if "①" in mode:
+        # 追跡開始からの経過日数
+        df_filtered['x_val'] = ((df_filtered['timestamp'] - df_filtered['first_seen']).dt.total_seconds() / 86400).round(1)
+        x_label = "ツール追跡開始からの経過日数 (日)"
+    else:
+        # 公開日からの経過日数
+        df_filtered['x_val'] = ((df_filtered['timestamp'] - df_filtered['published_at']).dt.total_seconds() / 86400).round(1)
+        x_label = "動画公開からの経過日数 (日)"
+
+    target_y = 'views_gained' if y_choice == 'views_gained' else y_choice
+    y_label = {"views":"累計再生数", "views_gained":"増加再生数", "likes":"高評価数", "comments":"コメント数"}[target_y]
+
+    # Plotly描画
     fig = px.line(
         df_filtered,
-        x=x_col,
-        y=y_choice,
+        x='x_val',
+        y=target_y,
         color='title',
         markers=True,
-        title=f"🔥 動画公開後の{y_label}成長スピード比較",
-        labels={x_col: x_label, y_choice: y_label, 'title': '動画タイトル'}
+        title=f"📈 {y_label} の成長比較（{mode.split(' ')[0]}）",
+        labels={'x_val': x_label, target_y: y_label, 'title': '動画タイトル'}
     )
     fig.update_yaxes(rangemode="tozero")
     fig.update_layout(
@@ -166,7 +178,7 @@ if 'df_all' in locals() and not df_all.empty and len(video_ids) > 0:
     st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.warning("⚠️ 表示できるデータがありません。画面左のサイドバーにYouTube動画のURLを入力してください。")
+    st.warning("⚠️ 表示できるデータがありません。サイドバーに動画URLを入力してください。")
 # ==========================================
 # 機能 2 & 3: 熱意度指数 & 初速マトリクス
 # ==========================================
