@@ -124,20 +124,35 @@ def load_supabase_data():
     return pd.DataFrame()
 
 # ==========================================
-# 2. サイドバー：一括URL入力（最大15本対応）
+# 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
 # ==========================================
-st.sidebar.title("競合トラッキング設定")
+st.sidebar.title(" 競合トラッキング設定")
+
+#  手動更新ボタン（押すとキャッシュをクリアして最新データをYouTubeから再取得）
+if st.sidebar.button(" 最新データに手動更新", use_container_width=True):
+    st.cache_data.clear()
+    st.sidebar.success("最新データを再取得しました！")
+
 st.sidebar.markdown("監視したい競合MVのURLを一括入力してください**（最大15本・改行区切り）**")
+
+# Session StateでURL入力内容を記憶（画面更新でも消えない）
+if "saved_urls_text" not in st.session_state:
+    st.session_state.saved_urls_text = ""
 
 urls_text = st.sidebar.text_area(
     "YouTube URL 一括入力",
+    value=st.session_state.saved_urls_text,
     height=180,
-    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=..."
+    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=...",
+    key="url_text_area"
 )
+
+# 入力内容を保存
+st.session_state.saved_urls_text = urls_text
 
 raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
 video_ids = []
-for u in raw_urls[:15]: # 最大15本制限
+for u in raw_urls[:15]:
     v_id = extract_video_id(u)
     if v_id and v_id not in video_ids:
         video_ids.append(v_id)
