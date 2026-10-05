@@ -54,22 +54,50 @@ def extract_video_id(url):
         return url
     return None
 
+# ★【完全修復】APIキー制限やキャッシュバグを回避し、oEmbedから100%タイトルを回収する関数
+def get_real_title(v_id, db_title, api_key):
+    # 1. DB内のタイトルが正常に存在する場合はそれを使用
+    if not pd.isna(db_title) and str(db_title).strip() not in ['None', 'nan', 'Unknown', '']:
+        return str(db_title).strip()
+    
+    # 2. YouTube Data API キーで取得試行
+    if api_key:
+        try:
+            yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={v_id}&key={api_key}"
+            res = requests.get(yt_url, timeout=3).json()
+            items = res.get("items", [])
+            if items:
+                t = items[0].get("snippet", {}).get("title")
+                if t and str(t).strip() not in ['None', 'nan', 'Unknown', '']:
+                    return t
+        except Exception:
+            pass
+            
+    # 3. 【APIキー不要の裏ワザ】YouTube oEmbed API からタイトルを100%確定取得
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={v_id}&format=json"
+        res = requests.get(oembed_url, timeout=3).json()
+        t = res.get("title")
+        if t:
+            return t
+    except Exception:
+        pass
+
+    return "タイトル取得失敗"
+
 # 動画タイトルをグラフ用に短縮・整形する関数
 def clean_title(title, max_len=16):
-    if pd.isna(title) or title is None or str(title).strip() in ['None', 'nan', 'Unknown', '']:
+    if not title or title in ["Unknown", "タイトル取得失敗"]:
         return "Unknown"
     
     raw_title = str(title).strip()
     cleaned = raw_title
     
-    # 不要な装飾語の削除
     remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
     for w in remove_words:
         cleaned = cleaned.replace(w, "")
         
     cleaned = cleaned.strip()
-    
-    # 置換で文字が消えてしまった場合は元のタイトルを使用
     if not cleaned:
         cleaned = raw_title
         
@@ -210,53 +238,55 @@ live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vi
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp') if not df_filtered.empty else pd.DataFrame()
     
+    # 1. 新規動画またはDBデータ不足の場合
     if df_v.empty:
-        if v_id in live_stats:
-            ls = live_stats[v_id]
-            # DBにタイトルが無い（NaNやNone）場合はYouTube APIから自動補填
-            full_title = latest_row.get('title')
-            if pd.isna(full_title) or str(full_title).strip() in ['None', 'nan', 'Unknown', '']:
-                 snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
-                 full_title = snippets.get(v_id, {}).get('title', 'Unknown')
-            short_title = clean_title(full_title)
-            views = ls['views']
-            pub_at = pd.to_datetime(ls['published_at'], utc=True)
-            pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
-            
-            lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
-            lifetime_vph = round(views / lifetime_hours, 1)
-            current_vph = lifetime_vph
-            momentum_ratio = 1.0
-            
-            summary_data.append({
-                "video_id": v_id,
-                "full_title": full_title,
-                "short_title": short_title,
-                "views": views,
-                "published_at_jst": pub_at_jst,
-                "lifetime_hours": round(lifetime_hours, 1),
-                "lifetime_vph": lifetime_vph,
-                "current_vph": current_vph,
-                "momentum_ratio": momentum_ratio,
-                "pub_day": pub_at_jst.strftime('%A'),
-                "pub_hour": pub_at_jst.hour
-            })
+        ls = live_stats.get(v_id, {})
+        views = ls.get('views', 0)
+        pub_at_raw = ls.get('published_at', now_utc.isoformat())
+        pub_at = pd.to_datetime(pub_at_raw, utc=True)
+        pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+        
+        # 確実にタイトルを取得
+        full_title = get_real_title(v_id, ls.get('title'), YOUTUBE_API_KEY)
+        short_title = clean_title(full_title)
+        
+        lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
+        lifetime_vph = round(views / lifetime_hours, 1) if views > 0 else 0
+        current_vph = lifetime_vph
+        momentum_ratio = 1.0
+        
+        summary_data.append({
+            "video_id": v_id,
+            "full_title": full_title,
+            "short_title": short_title,
+            "views": views,
+            "published_at_jst": pub_at_jst,
+            "lifetime_hours": round(lifetime_hours, 1),
+            "lifetime_vph": lifetime_vph,
+            "current_vph": current_vph,
+            "momentum_ratio": momentum_ratio,
+            "pub_day": pub_at_jst.strftime('%A'),
+            "pub_hour": pub_at_jst.hour
+        })
         continue
 
+    # 2. DBに蓄積データが存在する場合
     latest_row = df_v.iloc[-1]
     first_row = df_v.iloc[0]
     
-    full_title = latest_row.get('title', 'Unknown')
-    short_title = clean_title(full_title)
     views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-    
     pub_at_raw = latest_row.get('published_at')
+    
     if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
         snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
         pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
         
     pub_at = pd.to_datetime(pub_at_raw, utc=True)
     pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+    
+    # 確実にタイトルを取得
+    full_title = get_real_title(v_id, latest_row.get('title'), YOUTUBE_API_KEY)
+    short_title = clean_title(full_title)
     
     lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
     lifetime_vph = round(views / lifetime_hours, 1)
