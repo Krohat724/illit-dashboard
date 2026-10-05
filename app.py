@@ -404,13 +404,20 @@ with col1:
 with col2:
     st.markdown("##### バズ加速率判定")
     for _, row in df_summary.iterrows():
-        status = " 急加速中" if row['momentum_ratio'] > 1.2 else ("減速傾向" if row['momentum_ratio'] < 0.8 else "➡️ 安定維持")
+        ratio = row['momentum_ratio']
+        # +/- 5% の変化で感度高く判定
+        if ratio >= 1.05:
+            status = " 急加速中"
+        elif ratio <= 0.95:
+            status = " 減速傾向"
+        else:
+            status = "➡ 安定維持"
+            
         st.write(f"**{row['short_title']}**")
-        st.caption(f"バズ加速率: **{row['momentum_ratio']}倍** ({status})")
+        st.caption(f"バズ加速率: **{ratio}倍** ({status})")
         st.write(f"・直近速度: `{row['current_vph']:,} 回/時`")
         st.write(f"・通算平均: `{row['lifetime_vph']:,} 回/時`")
         st.divider()
-
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
 # =========================================
@@ -464,12 +471,15 @@ if not matrix_df.empty:
                f"最も高い初速・伸び（`{best_row['lifetime_vph']:,} 回/時`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['full_title']}`）です！")
 
 
+from plotly.subplots import make_subplots
+
 # ==========================================
-# 機能 4:  ファンダム熱量スコア（直感的アクション数分析）
+# 機能 4: ファンダム熱量スコア（分離グラフ & 相対ランク判定）
 # ==========================================
 st.subheader("4.  ファンダム熱量スコア（ファンエンゲージメント分析）")
 st.markdown("""
-単なる再生数（PV）だけでなく、**「1,000回再生されるごとにファンが何回アクション（高評価・コメント）を起こしたか」** で熱量を測定します。
+再生数に対してファンがどれだけ積極的に高評価・コメントを残しているかを測定します。
+高評価とコメントの比率を個別に分析し、比較対象の中での相対的な熱量ランクを算出します。
 """)
 
 # 1,000再生あたりの高評価数・コメント数計算
@@ -477,51 +487,67 @@ df_summary['likes_per_1k'] = (df_summary['likes'] / df_summary['views'] * 1000).
 df_summary['comments_per_1k'] = (df_summary['comments'] / df_summary['views'] * 1000).round(1)
 df_summary['total_action_per_1k'] = (df_summary['likes_per_1k'] + df_summary['comments_per_1k']).round(1)
 
-# 高評価率・コメント率（％）
-df_summary['like_rate'] = (df_summary['likes'] / df_summary['views'] * 100).round(2)
-df_summary['comment_rate'] = (df_summary['comments'] / df_summary['views'] * 100).round(3)
-
 col_f1, col_f2 = st.columns([2, 1])
 
 with col_f1:
-    # 1,000再生あたりのアクション数 積み上げ棒グラフ
-    fig_fandom = go.Figure()
-    fig_fandom.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['likes_per_1k'],
-        name='高評価数 (1,000再生あたり)',
-        marker_color='#2ca02c'
-    ))
-    fig_fandom.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['comments_per_1k'],
-        name='コメント数 (1,000再生あたり)',
-        marker_color='#d62728'
-    ))
-    fig_fandom.update_layout(
-        barmode='stack', # 積み上げで合計アクション数を可視化
-        title="1,000回再生あたりのファンリアクション数比較",
-        xaxis_title="動画タイトル (曲名 / アーティスト)",
-        yaxis_title="リアクション数 (回 / 1,000再生)",
-        legend=dict(orientation="h", y=1.1)
+    # 左右2軸で「高評価」と「コメント」を並列（group）表示
+    fig_fandom = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig_fandom.add_trace(
+        go.Bar(
+            x=df_summary['short_title'],
+            y=df_summary['likes_per_1k'],
+            name='高評価数 (1k再生あたり)',
+            marker_color='#2ca02c',
+            offsetgroup=1
+        ),
+        secondary_y=False
     )
+
+    fig_fandom.add_trace(
+        go.Bar(
+            x=df_summary['short_title'],
+            y=df_summary['comments_per_1k'],
+            name='コメント数 (1k再生あたり)',
+            marker_color='#d62728',
+            offsetgroup=2
+        ),
+        secondary_y=True
+    )
+
+    fig_fandom.update_layout(
+        barmode='group',
+        title="1,000回再生あたりの 高評価数 vs コメント数 分離比較",
+        xaxis_title="動画タイトル (曲名 / アーティスト)",
+        legend=dict(orientation="h", y=1.15)
+    )
+
+    fig_fandom.update_yaxes(title_text="高評価数 (回 / 1k再生)", secondary_y=False)
+    fig_fandom.update_yaxes(title_text="コメント数 (回 / 1k再生)", secondary_y=True)
+
     st.plotly_chart(fig_fandom, use_container_width=True)
 
 with col_f2:
-    st.markdown("##### ファンダム熱量ランク判定")
+    st.markdown("#####  相対ファンダム熱量ランク")
+    
+    # 比較対象の中での平均値・最高値を基準にした相対判定
+    avg_action = df_summary['total_action_per_1k'].mean()
+    max_action = df_summary['total_action_per_1k'].max()
+    
     df_fandom_sorted = df_summary.sort_values('total_action_per_1k', ascending=False)
     
     for rank, (_, row) in enumerate(df_fandom_sorted.iterrows(), 1):
         tot = row['total_action_per_1k']
-        # 熱量ランクの直感的判定
-        if tot >= 30:
-            rank_badge = " Sランク (熱狂的ファン層)"
-        elif tot >= 20:
-            rank_badge = " Aランク (高熱量ファン)"
-        elif tot >= 10:
-            rank_badge = " Bランク (標準的)"
+        
+        # 比較対象群の中での相対ランク判定
+        if tot >= max_action * 0.9 and tot > avg_action:
+            rank_badge = " Sランク (群を抜く熱狂度)"
+        elif tot >= avg_action * 1.05:
+            rank_badge = " Aランク (平均以上・高熱量)"
+        elif tot >= avg_action * 0.85:
+            rank_badge = " Bランク (平均的)"
         else:
-            rank_badge = " Cランク (ライト層中心)"
+            rank_badge = " Cランク (ライト層多め)"
             
         st.write(f"**#{rank} {row['short_title']}**")
         st.write(f"・熱量判定: **{rank_badge}**")
