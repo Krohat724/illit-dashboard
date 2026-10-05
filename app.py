@@ -185,7 +185,7 @@ if st.button("最新50件のコメントをGeminiで解析する"):
             # Gemini API呼び出し (エラー捕捉付き)
             try:
                 response = client.models.generate_content(
-                    model='gemini-1.5-flash',  # 最も安定している公式モデル
+                    model='gemini-2.0-flash',  # 最も安定している公式モデル
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
