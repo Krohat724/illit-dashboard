@@ -54,27 +54,25 @@ def extract_video_id(url):
         return url
     return None
 
-# 動画タイトルをグラフ用に短縮・整形する関数（型エラーガード完全版）
+# 動画タイトルをグラフ用に短縮・整形する関数
 def clean_title(title, max_len=16):
-    # NaNやNone、文字列以外が来た場合の安全チェック
-    if pd.isna(title) or title is None:
+    if pd.isna(title) or title is None or str(title).strip() in ['None', 'nan', 'Unknown', '']:
         return "Unknown"
     
-    # 強制的に文字列型（str）へ変換
-    cleaned = str(title)
+    raw_title = str(title).strip()
+    cleaned = raw_title
     
-    # 不要な文字の削除
+    # 不要な装飾語の削除
     remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
     for w in remove_words:
         cleaned = cleaned.replace(w, "")
         
     cleaned = cleaned.strip()
     
-    # 文字削除の結果、空文字になった場合
+    # 置換で文字が消えてしまった場合は元のタイトルを使用
     if not cleaned:
-        return "Unknown"
+        cleaned = raw_title
         
-    # 指定文字数に短縮
     if len(cleaned) > max_len:
         return cleaned[:max_len] + "…"
         
@@ -215,7 +213,11 @@ for v_id in video_ids:
     if df_v.empty:
         if v_id in live_stats:
             ls = live_stats[v_id]
-            full_title = ls['title']
+            # DBにタイトルが無い（NaNやNone）場合はYouTube APIから自動補填
+            full_title = latest_row.get('title')
+              if pd.isna(full_title) or str(full_title).strip() in ['None', 'nan', 'Unknown', '']:
+                 snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
+                 full_title = snippets.get(v_id, {}).get('title', 'Unknown')
             short_title = clean_title(full_title)
             views = ls['views']
             pub_at = pd.to_datetime(ls['published_at'], utc=True)
