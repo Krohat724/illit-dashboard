@@ -85,26 +85,64 @@ def get_real_title(v_id, db_title, api_key):
 
     return "タイトル取得失敗"
 
-# 動画タイトルをグラフ用に短縮・整形する関数
-def clean_title(title, max_len=16):
+import re
+
+# 動画タイトルを「曲名 / アーティスト名」にスマート整形する関数
+def clean_title(title, max_len=22):
     if not title or title in ["Unknown", "タイトル取得失敗"]:
         return "Unknown"
     
-    raw_title = str(title).strip()
-    cleaned = raw_title
+    raw = str(title).strip()
     
-    remove_words = ["Official MV", "Official Music Video", "MUSIC VIDEO", "MV", "【MV】", "[MV]", "『", "』", "(Official)", "Performance Video"]
-    for w in remove_words:
-        cleaned = cleaned.replace(w, "")
+    # 1. 邪魔な [MV], 【MV】, [Official Video], (MV full) などのブラケット装飾を削除
+    raw = re.sub(r'[\[【\(](?:MV|Official|PV|Full|Music Video|Performance).*?[\]】\)]', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'Official\s*(?:Music\s*)?Video', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'MUSIC\s*VIDEO', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'^[\[【\(]\s*[\]】\)]', '', raw).strip()
+    
+    # 2. アーティスト名と曲名を分離抽出
+    artist, song = "", ""
+    
+    # パターンA: アーティスト名「曲名」または アーティスト名『曲名』
+    m_quote = re.search(r'^(.*?)\s*[「『\'"](.*?)[」』\'"]', raw)
+    if m_quote:
+        artist = m_quote.group(1).strip()
+        song = m_quote.group(2).strip()
+    # パターンB: アーティスト名 / 曲名 または 曲名 / アーティスト名
+    elif "/" in raw or "／" in raw:
+        parts = re.split(r'[/／]', raw, maxsplit=1)
+        p1, p2 = parts[0].strip(), parts[1].strip()
+        if "「" in p2 or "『" in p2 or "'" in p2 or "」" in p2:
+            artist, song = p1, p2
+        else:
+            song, artist = p1, p2
+    else:
+        m_single = re.search(r'[「『\'"](.*?)[」』\'"]', raw)
+        if m_single:
+            song = m_single.group(1).strip()
+            artist = raw.replace(m_single.group(0), '').strip()
+        else:
+            song = raw
+            artist = ""
+            
+    # アーティスト名のサブカッコ（韓国語表記など）を整理
+    artist = re.sub(r'\(.*?\)', '', artist).strip()
+    artist = re.sub(r'\[.*?\]', '', artist).strip()
+    artist = re.sub(r'【.*?】', '', artist).strip()
+    
+    # 3. 「曲名 / アーティスト名」のフォーマットに結合
+    if song and artist:
+        formatted = f"{song} / {artist}"
+    elif song:
+        formatted = song
+    else:
+        formatted = raw
         
-    cleaned = cleaned.strip()
-    if not cleaned:
-        cleaned = raw_title
-        
-    if len(cleaned) > max_len:
-        return cleaned[:max_len] + "…"
-        
-    return cleaned
+    formatted = re.sub(r'\s+', ' ', formatted).strip()
+    
+    if len(formatted) > max_len:
+        return formatted[:max_len] + "…"
+    return formatted
 # YouTube APIから snippet を自動取得
 @st.cache_data(ttl=3600)
 def fetch_video_snippets(v_ids, api_key):
