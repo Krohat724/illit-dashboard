@@ -278,9 +278,9 @@ else:
     st.stop()
 
 # ==========================================
-# 機能 1: 📊 2軸スピード比較（通算ヒットペース vs 現在のバズ勢い）
+# 機能 1:  2軸スピード比較（通算ヒットペース vs 現在のバズ勢い）
 # ==========================================
-st.subheader("1. 📊 ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
+st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
 st.markdown("""
 * **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度（過去動画同士の公平な比較基準）
 * **現在のバズ勢い（直近時速）**: ツール登録後のリアルタイム増加速度（今まさにバズっているか）
@@ -376,21 +376,25 @@ if not matrix_df.empty:
                f"最も高い初速・伸び（`{best_row['lifetime_vph']:,} 回/時`）を記録しているのは **『{best_row['pub_day_jp']}曜日の {best_row['pub_hour']}時』** に公開された動画（`{best_row['full_title']}`）です！")
 
 # ==========================================
-# 5. AI自動診断 & PDF・印刷用レポート出力機能
+# 5. AI自動診断 & PDF・印刷用レポート出力機能（AI結果固定版）
 # ==========================================
-st.subheader("AI競合診断 ＆ PDFレポート自動出力")
+st.subheader(" AI競合診断 ＆ PDFレポート自動出力")
 
-ai_report_text = ""
+# Session State でAI生成レポートを画面内に保持（他の操作をしても消えない）
+if "ai_report_text" not in st.session_state:
+    st.session_state.ai_report_text = ""
 
 if GEMINI_API_KEY:
-    if st.button(" Gemini AI で分析レポートを自動生成する"):
-        with st.spinner("Gemini APIでデータ分析中..."):
-            try:
-                genai.configure(api_key=GEMINI_API_KEY)
-                model = genai.GenerativeModel("gemini-3.8-flash")
-                
-                prompt = f"""
-あなたはエンタメ業界専門のデータアナリストです。
+    col_ai1, col_ai2 = st.columns([1, 3])
+    with col_ai1:
+        if st.button(" Gemini AI で分析レポート生成", use_container_width=True):
+            with st.spinner("Gemini APIでデータ分析中..."):
+                try:
+                    genai.configure(api_key=GEMINI_API_KEY)
+                    model = genai.GenerativeModel("gemini-3.8-flash")
+                    
+                    prompt = f"""
+あなたはK-POP/J-POPエンタメ業界専門のデータアナリストです。
 以下の競合MVパフォーマンスデータを分析し、芸能事務所のマネージャー向けに簡潔で実践的なインサイトレポートを作成してください。
 
 【分析データ】
@@ -404,11 +408,15 @@ if GEMINI_API_KEY:
 
 専門用語は噛み砕き、箇条書きで分かりやすく出力してください。
 """
-                response = model.generate_content(prompt)
-                ai_report_text = response.text
-                st.markdown(ai_report_text)
-            except Exception as e:
-                st.error(f"Gemini API実行エラー: {e}")
+                    response = model.generate_content(prompt)
+                    # 結果を Session State に保存（画面リロードしても消えない）
+                    st.session_state.ai_report_text = response.text
+                except Exception as e:
+                    st.error(f"Gemini API実行エラー: {e}")
+
+    # AIレポートが生成されていれば表示
+    if st.session_state.ai_report_text:
+        st.markdown(st.session_state.ai_report_text)
 else:
     st.info(" `GEMINI_API_KEY` を Streamlit Secrets に設定すると、AI自動診断機能が有効化されます。")
 
@@ -430,7 +438,6 @@ report_html = f"""
         table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
         th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
         th {{ background-color: #f2f2f2; }}
-        .badge {{ background-color: #FF4B4B; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }}
     </style>
 </head>
 <body>
@@ -467,7 +474,7 @@ report_html += f"""
     <h2>2. Gemini AI 競合分析インサイト</h2>
     <div>
         <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 5px;">
-{ai_report_text if ai_report_text else "（AIレポートが未生成です。画面でAI生成ボタンを押すとここに反映されます）"}
+{st.session_state.ai_report_text if st.session_state.ai_report_text else "（AIレポート未生成です）"}
         </pre>
     </div>
 </body>
@@ -482,12 +489,11 @@ with col_pdf:
         file_name=f"VPH_Analytics_Report_{datetime.now().strftime('%Y%m%d')}.html",
         mime="text/html"
     )
-    st.caption("※ダウンロードしたファイルを開き、ブラウザの「印刷 ➔ PDFに保存」で綺麗にPDF化できます。")
 
 with col_txt:
     st.download_button(
-        label=" AIレポート（テキスト版）をダウンロード",
-        data=ai_report_text if ai_report_text else "AIレポート未生成",
+        label="AIレポート（テキスト版）をダウンロード",
+        data=st.session_state.ai_report_text if st.session_state.ai_report_text else "AIレポート未生成",
         file_name=f"AI_Report_{datetime.now().strftime('%Y%m%d')}.txt",
         mime="text/plain"
     )
