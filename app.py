@@ -187,6 +187,17 @@ def fetch_live_video_stats(v_ids, api_key):
 # Supabase全データ取得
 @st.cache_data(ttl=60)
 def load_supabase_data():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return pd.DataFrame()
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            return pd.DataFrame(res.json())
+    except Exception:
+        pass
+    return pd.DataFrame()
+    
     # ★ 時間経過に合わせてSupabaseへ最新データを自動スナップショット保存する関数
 def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
     if not SUPABASE_URL or not SUPABASE_KEY or not video_ids:
