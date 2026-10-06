@@ -333,12 +333,9 @@ if not df_filtered.empty:
 now_utc = datetime.now(timezone.utc)
 
 # ==========================================
-# 4. 指標計算ロジック（分かりやすい言葉に変換）
+# 4. 指標計算ロジック（実測差分VPH計算）
 # ==========================================
 summary_data = []
-
-missing_vids = [v for v in video_ids if df_filtered.empty or df_filtered[df_filtered['video_id'] == v].empty]
-live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vids else {}
 
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp') if not df_filtered.empty else pd.DataFrame()
@@ -359,7 +356,7 @@ for v_id in video_ids:
         
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1) if views > 0 else 0
-        current_vph = lifetime_vph  # 初回表示は通算VPHと同じ値
+        current_vph = lifetime_vph
         momentum_ratio = 1.0
         is_real_tracking = False
         tracking_time_str = "追跡初期"
@@ -400,12 +397,38 @@ for v_id in video_ids:
             momentum_ratio = 1.0
             is_real_tracking = False
             tracking_time_str = "追跡初期"
+
+    # データリストへの格納処理
+    summary_data.append({
+        "video_id": v_id,
+        "full_title": full_title,
+        "short_title": short_title,
+        "views": views,
+        "likes": likes,
+        "comments": comments,
+        "published_at_jst": pub_at_jst,
+        "lifetime_hours": round(lifetime_hours, 1),
+        "lifetime_vph": lifetime_vph,
+        "current_vph": current_vph,
+        "momentum_ratio": momentum_ratio,
+        "is_real_tracking": is_real_tracking,
+        "tracking_time_str": tracking_time_str,
+        "pub_day": pub_at_jst.strftime('%A'),
+        "pub_hour": pub_at_jst.hour
+    })
+
+if summary_data:
+    df_summary = pd.DataFrame(summary_data)
+else:
+    st.warning("⚠️ 有効なYouTube URLを入力してください。")
+    st.stop()
+    
 # ==========================================
 # 機能 1:  2軸スピード比較（通算平均 vs 直近時速）
 # ==========================================
 st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
 
-has_real_tracking = any(df_summary['is_real_tracking'])
+has_real_tracking = any(df_summary['is_real_tracking']) if 'is_real_tracking' in df_summary.columns else False
 if not has_real_tracking:
     st.info(" **ベースライン（1回目のデータ）を保存しました。**\n\n時間を置いてサイドバーの「🔄 最新データに手動更新」を押すと、2回目のデータが記録され、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
 
