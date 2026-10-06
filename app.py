@@ -338,10 +338,12 @@ for v_id in video_ids:
         views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
         current_vph = round(views_diff / tracking_hours, 1)
         momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+        is_tracking = True
     else:
         # ★追加：登録直後（データ蓄積前）は直近速度を 0 にして同じ棒が並ぶのを防ぐ
-        current_vph = 0
+        current_vph = lifetime_vph
         momentum_ratio = 1.0
+        is_traking = False
         
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
     
@@ -379,42 +381,44 @@ st.markdown("""
 col1, col2 = st.columns([2, 1])
 
 with col1:
+    # データ蓄積状態の案内バッジ
+    has_real_data = any([r.get('is_tracking', False) for _, r in df_summary.iterrows()])
+    if not has_real_data:
+        st.info("💡 **現在、1時間ごとの追跡データを蓄積中です。**（初回表示は通算平均ペースを反映中。時間が経つとオレンジの棒が実測の勢いに自動更新されます）")
+
     fig_vph = go.Figure()
 
-    # 1. 【現在のバズ勢い】をメインの棒グラフにする（オレンジ）
+    # 1. 【通算ヒットペース】（青色の棒）
+    fig_vph.add_trace(go.Bar(
+        x=df_summary['short_title'],
+        y=df_summary['lifetime_vph'],
+        name='通算ヒットペース (平均時速)',
+        marker_color='#1f77b4',
+        text=[f"{v:,.0f}" for v in df_summary['lifetime_vph']], # 棒の上に数値を直接表示
+        textposition='auto',
+        hovertext=df_summary['full_title']
+    ))
+
+    # 2. 【現在のバズ勢い】（オレンジ色の棒）
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
         name='現在のバズ勢い (直近時速)',
         marker_color='#ff7f0e',
-        hovertext=df_summary['full_title']
-    ))
-
-    # 2. 【通算ヒットペース】を「基準ライン」として上から重ねる（青）
-    fig_vph.add_trace(go.Scatter(
-        x=df_summary['short_title'],
-        y=df_summary['lifetime_vph'],
-        name='通算ヒットペース (基準値)',
-        mode='markers',
-        marker=dict(
-            color='#1f77b4',
-            size=35,           # 横棒の幅を広げて棒グラフに被せる
-            symbol='line-ew',  # 横棒(-)の記号
-            line=dict(width=4, color='#1f77b4') # 青い線の太さ
-        ),
+        text=[f"{v:,.0f}" for v in df_summary['current_vph']], # 棒の上に数値を直接表示
+        textposition='auto',
         hovertext=df_summary['full_title']
     ))
 
     fig_vph.update_layout(
-        title="動画別 再生速度比較（基準ライン vs 現在の勢い）",
+        barmode='group', # 王道の2本並列表示
+        title="動画別 再生速度比較（通算平均 vs 直近時速）",
         xaxis_title="動画タイトル",
         yaxis_title="再生増加数 (回 / 時間)",
-        yaxis_type="log", # ★追加：規模の差を吸収し、小さな差を強調する対数スケール
-        barmode='overlay',
-        legend=dict(orientation="h", y=1.15)
+        legend=dict(orientation="h", y=1.15),
+        margin=dict(t=50, b=80)
     )
     st.plotly_chart(fig_vph, use_container_width=True)
-
 with col2:
     st.markdown("#####  スピード & 勢い判定 (絶対評価)")
 
