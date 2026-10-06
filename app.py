@@ -337,8 +337,11 @@ for v_id in video_ids:
     if tracking_hours > 0.1:
         views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
         current_vph = round(views_diff / tracking_hours, 1)
+        momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
     else:
-        current_vph = lifetime_vph
+        # ★追加：登録直後（データ蓄積前）は直近速度を 0 にして同じ棒が並ぶのを防ぐ
+        current_vph = 0
+        momentum_ratio = 1.0
         
     momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
     
@@ -377,13 +380,8 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     fig_vph = go.Figure()
-    fig_vph.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['lifetime_vph'],
-        name='通算ヒットペース (平均時速)',
-        marker_color='#1f77b4',
-        hovertext=df_summary['full_title']
-    ))
+
+    # 1. 【現在のバズ勢い】をメインの棒グラフにする（オレンジ）
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
@@ -391,12 +389,29 @@ with col1:
         marker_color='#ff7f0e',
         hovertext=df_summary['full_title']
     ))
+
+    # 2. 【通算ヒットペース】を「基準ライン」として上から重ねる（青）
+    fig_vph.add_trace(go.Scatter(
+        x=df_summary['short_title'],
+        y=df_summary['lifetime_vph'],
+        name='通算ヒットペース (基準値)',
+        mode='markers',
+        marker=dict(
+            color='#1f77b4',
+            size=35,           # 横棒の幅を広げて棒グラフに被せる
+            symbol='line-ew',  # 横棒(-)の記号
+            line=dict(width=4, color='#1f77b4') # 青い線の太さ
+        ),
+        hovertext=df_summary['full_title']
+    ))
+
     fig_vph.update_layout(
-        barmode='group',
-        title="動画別 再生速度（VPH）比較",
+        title="動画別 再生速度比較（基準ライン vs 現在の勢い）",
         xaxis_title="動画タイトル",
         yaxis_title="再生増加数 (回 / 時間)",
-        legend=dict(orientation="h", y=1.1)
+        yaxis_type="log", # ★追加：規模の差を吸収し、小さな差を強調する対数スケール
+        barmode='overlay',
+        legend=dict(orientation="h", y=1.15)
     )
     st.plotly_chart(fig_vph, use_container_width=True)
 
