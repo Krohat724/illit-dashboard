@@ -184,12 +184,17 @@ def fetch_live_video_stats(v_ids, api_key):
         pass
     return live_data
 
-    # Supabaseから全データ読み込み
+ # Supabaseから全データ読み込み
 @st.cache_data(ttl=60)
 def load_supabase_data():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return pd.DataFrame()
     try:
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
@@ -203,6 +208,11 @@ def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
     if not SUPABASE_URL or not SUPABASE_KEY or not video_ids:
         return
     
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
     now_iso = datetime.now(timezone.utc).isoformat()
     
     for v_id in video_ids:
@@ -215,51 +225,6 @@ def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
             df_v_ts = pd.to_datetime(df_v['timestamp'], utc=True)
             last_time = df_v_ts.max()
             minutes_since_last = (datetime.now(timezone.utc) - last_time).total_seconds() / 60
-            if minutes_since_last >= 10:
-                should_insert = True
-                
-        if should_insert:
-            ls = live_stats.get(v_id)
-            if not ls and api_key:
-                ls_dict = fetch_live_video_stats([v_id], api_key)
-                ls = ls_dict.get(v_id)
-            
-            if ls:
-                payload = {
-                    "video_id": v_id,
-                    "title": ls.get("title", "Unknown"),
-                    "views": ls.get("views", 0),
-                    "likes": ls.get("likes", 0),
-                    "comments": ls.get("comments", 0),
-                    "published_at": ls.get("published_at"),
-                    "timestamp": now_iso
-                }
-                try:
-                    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats"
-                    requests.post(url, headers=headers, json=payload, timeout=3)
-                except Exception:
-                    pass
-
-    
-    
-    # ★ 時間経過に合わせてSupabaseへ最新データを自動スナップショット保存する関数
-def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
-    if not SUPABASE_URL or not SUPABASE_KEY or not video_ids:
-        return
-    
-    now_iso = datetime.now(timezone.utc).isoformat()
-    
-    for v_id in video_ids:
-        df_v = df_all[df_all['video_id'] == v_id] if (not df_all.empty and 'video_id' in df_all.columns) else pd.DataFrame()
-            
-        should_insert = False
-        if df_v.empty:
-            should_insert = True
-        else:
-            df_v_ts = pd.to_datetime(df_v['timestamp'], utc=True)
-            last_time = df_v_ts.max()
-            minutes_since_last = (datetime.now(timezone.utc) - last_time).total_seconds() / 60
-            # 前回の記録から10分以上経っていれば新データとして自動追記保存
             if minutes_since_last >= 10:
                 should_insert = True
                 
@@ -286,16 +251,21 @@ def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
                     pass
 
 # --- メインデータ読み込み部分 ---
-live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
+# ※ video_ids や YOUTUBE_API_KEY が定義されていることを確認した位置で実行
+if 'video_ids' in locals() and 'YOUTUBE_API_KEY' in locals() and video_ids:
+    live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
+else:
+    live_stats = {}
+
 df_all = load_supabase_data()
 
 # アプリ起動時に最新スナップショットをSupabaseへ自動記録
-auto_save_snapshot_if_needed(video_ids, live_stats, df_all, YOUTUBE_API_KEY)
+if 'video_ids' in locals() and video_ids:
+    auto_save_snapshot_if_needed(video_ids, live_stats, df_all, YOUTUBE_API_KEY if 'YOUTUBE_API_KEY' in locals() else "")
 
 # スナップショット反映のため最新データを再読み込み
 df_all = load_supabase_data()
-df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if not df_all.empty else pd.DataFrame()
-
+df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.empty and 'video_ids' in locals()) else pd.DataFrame()
 # ==========================================
 # 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
 # ==========================================
