@@ -187,16 +187,59 @@ def fetch_live_video_stats(v_ids, api_key):
 # Supabase全データ取得
 @st.cache_data(ttl=60)
 def load_supabase_data():
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return pd.DataFrame()
-    try:
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
-        res = requests.get(url, headers=headers)
-        if res.status_code == 200:
-            return pd.DataFrame(res.json())
-    except Exception:
-        pass
-    return pd.DataFrame()
+    # ★ 時間経過に合わせてSupabaseへ最新データを自動スナップショット保存する関数
+def auto_save_snapshot_if_needed(video_ids, live_stats, df_all, api_key):
+    if not SUPABASE_URL or not SUPABASE_KEY or not video_ids:
+        return
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    for v_id in video_ids:
+        df_v = df_all[df_all['video_id'] == v_id] if (not df_all.empty and 'video_id' in df_all.columns) else pd.DataFrame()
+            
+        should_insert = False
+        if df_v.empty:
+            should_insert = True
+        else:
+            df_v_ts = pd.to_datetime(df_v['timestamp'], utc=True)
+            last_time = df_v_ts.max()
+            minutes_since_last = (datetime.now(timezone.utc) - last_time).total_seconds() / 60
+            # 前回の記録から10分以上経っていれば新データとして自動追記保存
+            if minutes_since_last >= 10:
+                should_insert = True
+                
+        if should_insert:
+            ls = live_stats.get(v_id)
+            if not ls and api_key:
+                ls_dict = fetch_live_video_stats([v_id], api_key)
+                ls = ls_dict.get(v_id)
+            
+            if ls:
+                payload = {
+                    "video_id": v_id,
+                    "title": ls.get("title", "Unknown"),
+                    "views": ls.get("views", 0),
+                    "likes": ls.get("likes", 0),
+                    "comments": ls.get("comments", 0),
+                    "published_at": ls.get("published_at"),
+                    "timestamp": now_iso
+                }
+                try:
+                    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats"
+                    requests.post(url, headers=headers, json=payload, timeout=3)
+                except Exception:
+                    pass
+
+# --- メインデータ読み込み部分 ---
+live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
+df_all = load_supabase_data()
+
+# アプリ起動時に最新スナップショットをSupabaseへ自動記録
+auto_save_snapshot_if_needed(video_ids, live_stats, df_all, YOUTUBE_API_KEY)
+
+# スナップショット反映のため最新データを再読み込み
+df_all = load_supabase_data()
+df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if not df_all.empty else pd.DataFrame()
 
 # ==========================================
 # 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
@@ -275,8 +318,8 @@ live_stats = fetch_live_video_stats(missing_vids, YOUTUBE_API_KEY) if missing_vi
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp') if not df_filtered.empty else pd.DataFrame()
     
-    # 1. 新規動画またはDBデータ不足の場合
-    if df_v.empty:
+    if df_v.empty or len(df_v) == 1:
+        # スナップショットが1件のみの場合（初回登録時）
         ls = live_stats.get(v_id, {})
         views = ls.get('views', 0)
         likes = ls.get('likes', 0)
@@ -291,165 +334,117 @@ for v_id in video_ids:
         
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1) if views > 0 else 0
-        current_vph = lifetime_vph
+        current_vph = lifetime_vph  # 初回表示は通算VPHと同じ値
         momentum_ratio = 1.0
+        is_real_tracking = False
+        tracking_time_str = "追跡初期"
         
-        summary_data.append({
-            "video_id": v_id,
-            "full_title": full_title,
-            "short_title": short_title,
-            "views": views,
-            "likes": likes,
-            "comments": comments,
-            "published_at_jst": pub_at_jst,
-            "lifetime_hours": round(lifetime_hours, 1),
-            "lifetime_vph": lifetime_vph,
-            "current_vph": current_vph,
-            "momentum_ratio": momentum_ratio,
-            "pub_day": pub_at_jst.strftime('%A'),
-            "pub_hour": pub_at_jst.hour
-        })
-        continue
-
-    # 2. DBに蓄積データが存在する場合
-    latest_row = df_v.iloc[-1]
-    first_row = df_v.iloc[0]
-    
-    views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-    likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
-    comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
-    
-    pub_at_raw = latest_row.get('published_at')
-    if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
-        snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
-        pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
-        
-    pub_at = pd.to_datetime(pub_at_raw, utc=True)
-    pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
-    
-    full_title = get_real_title(v_id, latest_row.get('title'), YOUTUBE_API_KEY)
-    short_title = clean_title(full_title)
-    
-    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
-    lifetime_vph = round(views / lifetime_hours, 1)
-    
-    tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
-    if tracking_hours > 0.1:
-        views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
-        current_vph = round(views_diff / tracking_hours, 1)
-        momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-        is_tracking = True
     else:
-        # ★追加：登録直後（データ蓄積前）は直近速度を 0 にして同じ棒が並ぶのを防ぐ
-        current_vph = lifetime_vph
-        momentum_ratio = 1.0
-        is_traking = False
+        # スナップショットが2件以上存在する場合（差分から直近速度を計算）
+        latest_row = df_v.iloc[-1]
+        first_row = df_v.iloc[0]
         
-    momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-    
-    summary_data.append({
-        "video_id": v_id,
-        "full_title": full_title,
-        "short_title": short_title,
-        "views": views,
-        "likes": likes,
-        "comments": comments,
-        "published_at_jst": pub_at_jst,
-        "lifetime_hours": round(lifetime_hours, 1),
-        "lifetime_vph": lifetime_vph,
-        "current_vph": current_vph,
-        "momentum_ratio": momentum_ratio,
-        "pub_day": pub_at_jst.strftime('%A'),
-        "pub_hour": pub_at_jst.hour
-    })
-
-if summary_data:
-    df_summary = pd.DataFrame(summary_data)
-else:
-    st.warning(" 有効なYouTube URLを入力してください。")
-    st.stop()
-
+        views = int(latest_row.get('views', latest_row.get('view_count', 0)))
+        likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
+        comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
+        
+        pub_at_raw = latest_row.get('published_at')
+        if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
+            snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
+            pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
+            
+        pub_at = pd.to_datetime(pub_at_raw, utc=True)
+        pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+        
+        full_title = get_real_title(v_id, latest_row.get('title'), YOUTUBE_API_KEY)
+        short_title = clean_title(full_title)
+        
+        lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
+        lifetime_vph = round(views / lifetime_hours, 1)
+        
+        # 1回目の記録と最新の記録の差分から直近スピードを算出
+        tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
+        if tracking_hours > 0.05:
+            views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
+            current_vph = round(views_diff / tracking_hours, 1)
+            momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+            is_real_tracking = True
+            tracking_time_str = f"過去{round(tracking_hours*60)}分間の実測値"
+        else:
+            current_vph = lifetime_vph
+            momentum_ratio = 1.0
+            is_real_tracking = False
+            tracking_time_str = "追跡初期"
 # ==========================================
-# 機能 1:  2軸スピード比較（通算ヒットペース vs 現在のバズ勢い）
+# 機能 1:  2軸スピード比較（通算平均 vs 直近時速）
 # ==========================================
-st.subheader("1. VPHモメンタム比較")
-st.markdown("""
-* **通算ヒットペース（平均時速）**: 動画公開から現在までの平均伸び速度（過去動画同士の公平な比較基準）
-* **現在のバズ勢い（直近時速）**: ツール登録後のリアルタイム増加速度（今まさにバズっているか）
-""")
+st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
+
+has_real_tracking = any(df_summary['is_real_tracking'])
+if not has_real_tracking:
+    st.info(" **ベースライン（1回目のデータ）を保存しました。**\n\n時間を置いてサイドバーの「🔄 最新データに手動更新」を押すと、2回目のデータが記録され、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    # データ蓄積状態の案内バッジ
-    has_real_data = any([r.get('is_tracking', False) for _, r in df_summary.iterrows()])
-    if not has_real_data:
-        st.info("💡 **現在、1時間ごとの追跡データを蓄積中です。**（初回表示は通算平均ペースを反映中。時間が経つとオレンジの棒が実測の勢いに自動更新されます）")
-
     fig_vph = go.Figure()
 
-    # 1. 【通算ヒットペース】（青色の棒）
+    # 1. 通算ヒットペース (青色の棒)
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['lifetime_vph'],
         name='通算ヒットペース (平均時速)',
         marker_color='#1f77b4',
-        text=[f"{v:,.0f}" for v in df_summary['lifetime_vph']], # 棒の上に数値を直接表示
+        text=[f"{v:,.0f}" for v in df_summary['lifetime_vph']],
         textposition='auto',
         hovertext=df_summary['full_title']
     ))
 
-    # 2. 【現在のバズ勢い】（オレンジ色の棒）
+    # 2. 現在のバズ勢い (オレンジ色の棒)
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
         name='現在のバズ勢い (直近時速)',
         marker_color='#ff7f0e',
-        text=[f"{v:,.0f}" for v in df_summary['current_vph']], # 棒の上に数値を直接表示
+        text=[f"{v:,.0f}" for v in df_summary['current_vph']],
         textposition='auto',
         hovertext=df_summary['full_title']
     ))
 
     fig_vph.update_layout(
-        barmode='group', # 王道の2本並列表示
-        title="動画別 再生速度比較（通算平均 vs 直近時速）",
-        xaxis_title="動画タイトル",
+        barmode='group', # 2本並列表示
+        title="動画別 再生速度（VPH）比較",
+        xaxis_title="動画タイトル (曲名 / アーティスト)",
         yaxis_title="再生増加数 (回 / 時間)",
-        legend=dict(orientation="h", y=1.15),
-        margin=dict(t=50, b=80)
+        legend=dict(orientation="h", y=1.15)
     )
     st.plotly_chart(fig_vph, use_container_width=True)
+
 with col2:
-    st.markdown("#####  スピード & 勢い判定 (絶対評価)")
-
+    st.markdown("##### スピード & 勢い判定")
     for _, row in df_summary.iterrows():
-        ratio = row['momentum_ratio']
-        c_vph = row['current_vph']
         l_vph = row['lifetime_vph']
-
-        # 通算スピード(Lifetime VPH)の絶対評価基準
+        ratio = row['momentum_ratio']
+        
         if l_vph >= 10000:
-            speed_rank = " Sランク (メガヒット規模 / 1万+ VPH)"
+            speed_rank = " Sランク (1万+ VPH)"
         elif l_vph >= 3000:
-            speed_rank = " Aランク (ハイペース / 3,000+ VPH)"
+            speed_rank = " Aランク (3,000+ VPH)"
         elif l_vph >= 1000:
-            speed_rank = " Bランク (順調 / 1,000+ VPH)"
+            speed_rank = " Bランク (1,000+ VPH)"
         else:
-            speed_rank = "👀 Cランク (ゆるやか / 1,000未満 VPH)"
-
-        # 直近バズの加速状態判定 (通算比の絶対基準)
-        if ratio >= 1.2:
-            accel_status = " 急加速中 (+20%以上)"
-        elif ratio <= 0.8:
-            accel_status = " 減速中 (-20%以上)"
-        else:
-            accel_status = "安定維持"
+            speed_rank = " Cランク (1,000未満)"
 
         st.write(f"**{row['short_title']}**")
         st.write(f"・通算規模: **{speed_rank}**")
-        st.caption(f"・直近の勢い: **{accel_status}** (通算の `{ratio}倍`)")
-        st.write(f"・直近速度: `{c_vph:,} 回/時`")
-        st.write(f"・通算平均: `{l_vph:,} 回/時`")
+        if row['is_real_tracking']:
+            status_str = "⚡ 加速中" if ratio > 1.05 else ("📉 減速中" if ratio < 0.95 else "➡️ 安定維持")
+            st.caption(f"・直近勢い: **{ratio}倍 ({status_str})** [{row['tracking_time_str']}]")
+        else:
+            st.caption("・直近勢い: ⏳ 蓄積中 (次回更新時に反映)")
+            
+        st.write(f"・直近時速: `{row['current_vph']:,} 回/時`")
+        st.write(f"・通算時速: `{l_vph:,} 回/時`")
         st.divider()
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
