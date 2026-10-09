@@ -267,50 +267,50 @@ if 'video_ids' in locals() and video_ids:
 df_all = load_supabase_data()
 df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.empty and 'video_ids' in locals()) else pd.DataFrame()
 # ==========================================
-# 2. サイドバー：一括URL入力（状態保持 & 更新ボタン付き）
+# 2. サイドバー：入力 & 手動更新
 # ==========================================
 st.sidebar.title(" 競合トラッキング設定")
 
-#  手動更新ボタン（押すとキャッシュをクリアして最新データをYouTubeから再取得）
-if st.sidebar.button(" 最新データに手動更新", use_container_width=True):
-    st.cache_data.clear()
-    st.sidebar.success("最新データを再取得しました！")
+col_sb1, col_sb2 = st.sidebar.columns(2)
+with col_sb1:
+    if st.button("通常更新", use_container_width=True):
+        st.cache_data.clear()
+        st.success("更新完了！")
 
-st.sidebar.markdown("監視したい競合MVのURLを一括入力してください**（最大15本・改行区切り）**")
+with col_sb2:
+    # 10分待たずに強制的に2件目のスナップショットを打刻するテストボタン
+    if st.button("⚡ 強制スナップ保存", use_container_width=True):
+        st.cache_data.clear()
+        if 'video_ids' in locals() and video_ids:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            }
+            save_count = 0
+            for v_id in video_ids:
+                ls = live_stats.get(v_id, {})
+                if ls:
+                    payload = {
+                        "video_id": v_id,
+                        "title": ls.get("title", "Unknown"),
+                        "views": ls.get("views", 0),
+                        "likes": ls.get("likes", 0),
+                        "comments": ls.get("comments", 0),
+                        "published_at": ls.get("published_at"),
+                        "timestamp": now_iso
+                    }
+                    res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
+                    if res.status_code in [200, 201]:
+                        save_count += 1
+                    else:
+                        st.sidebar.error(f"保存失敗({v_id}): {res.status_code} - {res.text}")
+            if save_count > 0:
+                st.sidebar.success(f"⚡ {save_count}件のスナップショットを強制記録しました！")
+                st.rerun()
 
-# Session StateでURL入力内容を記憶（画面更新でも消えない）
-if "saved_urls_text" not in st.session_state:
-    st.session_state.saved_urls_text = ""
-
-urls_text = st.sidebar.text_area(
-    "YouTube URL 一括入力",
-    value=st.session_state.saved_urls_text,
-    height=180,
-    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=...",
-    key="url_text_area"
-)
-
-# 入力内容を保存
-st.session_state.saved_urls_text = urls_text
-
-raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
-video_ids = []
-for u in raw_urls[:15]:
-    v_id = extract_video_id(u)
-    if v_id and v_id not in video_ids:
-        video_ids.append(v_id)
-
-st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15本")
-
-# 自動登録処理
-if video_ids and SUPABASE_URL and SUPABASE_KEY:
-    for v_id in video_ids:
-        try:
-            track_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/tracked_videos"
-            track_headers = {**headers, "Prefer": "resolution=ignore-duplicates"}
-            requests.post(track_url, headers=track_headers, json={"video_id": v_id})
-        except Exception:
-            pass
+st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
 # ==========================================
 # 3. メイン画面ヘッダー
@@ -469,8 +469,12 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("##### スピード & 勢い判定")
+    st.markdown("#####  スピード & 勢い判定")
     for _, row in df_summary.iterrows():
+        v_id = row['video_id']
+        df_v = df_filtered[df_filtered['video_id'] == v_id] if not df_filtered.empty else pd.DataFrame()
+        rec_count = len(df_v)
+        
         l_vph = row['lifetime_vph']
         ratio = row['momentum_ratio']
         
@@ -484,12 +488,14 @@ with col2:
             speed_rank = " Cランク (1,000未満)"
 
         st.write(f"**{row['short_title']}**")
+        st.caption(f" DB蓄積データ: **{rec_count}件**")
+        
         st.write(f"・通算規模: **{speed_rank}**")
         if row['is_real_tracking']:
-            status_str = "⚡ 加速中" if ratio > 1.05 else ("📉 減速中" if ratio < 0.95 else "➡️ 安定維持")
+            status_str = " 加速中" if ratio > 1.05 else (" 減速中" if ratio < 0.95 else " 安定維持")
             st.caption(f"・直近勢い: **{ratio}倍 ({status_str})** [{row['tracking_time_str']}]")
         else:
-            st.caption("・直近勢い: ⏳ 蓄積中 (次回更新時に反映)")
+            st.caption("・直近勢い: 蓄積中 (データ1件のため通算と同値)")
             
         st.write(f"・直近時速: `{row['current_vph']:,} 回/時`")
         st.write(f"・通算時速: `{l_vph:,} 回/時`")
