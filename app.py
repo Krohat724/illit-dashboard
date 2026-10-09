@@ -320,11 +320,12 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
                     "published_at": ls.get("published_at"),
                     "timestamp": now_iso
                 }
-                try:
-                    res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
-                    if res.status_code in [200, 201]:
+                res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
+                    
+                if res.status_code in [200, 201]:
                         save_count += 1
-                    else: error_mg = f"ステータス: {res.status_code} | 内容: {res.text}"
+                    
+                else: error_mg = f"ステータス: {res.status_code} | 内容: {res.text}"
         
         # エラーがあった場合は赤い警告を出す
         if error_msg:
