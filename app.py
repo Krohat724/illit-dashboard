@@ -424,7 +424,7 @@ for v_id in video_ids:
 
     if pub_at.tzinfo is None:
         pub_at = pub_at.tz_localize('UTC')
-    pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+    pub_at_jst = pub_at.tz_convert("Asia/Tokyo")
     
     full_title = get_real_title(v_id, title_raw, YOUTUBE_API_KEY)
     short_title = clean_title(full_title)
