@@ -388,101 +388,80 @@ now_utc = datetime.now(timezone.utc)
 # 4. 指標計算ロジック（実測差分VPH計算）
 # ==========================================
 summary_data = []
+now_utc = datetime.now(timezone.utc)
 
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
-    if df_v.empty:
-        # DBにデータが一切ない場合
-        ls = live_stats.get(v_id, {})
-        views = ls.get('views', 0)
-        likes = ls.get('likes', 0)
-        comments = ls.get('comments', 0)
-        
-        pub_at_raw = ls.get('published_at', now_utc.isoformat())
-        pub_at = pd.to_datetime(pub_at_raw, utc=True)
-        pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
-        
-        full_title = get_real_title(v_id, ls.get('title'), YOUTUBE_API_KEY)
-        short_title = clean_title(full_title)
-        
-        lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
-        lifetime_vph = round(views / lifetime_hours, 1) if views > 0 else 0
-        current_vph = lifetime_vph
-        momentum_ratio = 1.0
-        is_real_tracking = False
-        tracking_time_str = "データなし"
-        
-    else:
-        # タイムスタンプを正しいdatetime型に変換して時系列ソート
+    # 最新のYouTube API情報（フォールバック用）
+    ls = live_stats.get(v_id, {})
+    current_views = ls.get('views', 0)
+    current_likes = ls.get('likes', 0)
+    current_comments = ls.get('comments', 0)
+    
+    pub_at_raw = ls.get('published_at', now_utc.isoformat())
+    pub_at = pd.to_datetime(pub_at_raw, utc=True)
+    pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+    
+    full_title = get_real_title(v_id, ls.get('title'), YOUTUBE_API_KEY)
+    short_title = clean_title(full_title)
+    
+    # 通算スピード計算
+    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.01)
+    lifetime_vph = round(current_views / lifetime_hours, 1)
+
+    # --- 直近勢い（オレンジグラフ）の計算 ---
+    if len(df_v) >= 2:
+        # 時間順に並び替え
         df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
         df_v = df_v.sort_values('ts_dt')
-        rec_count = len(df_v)
         
-        # 最新のレコードを取得
         latest_row = df_v.iloc[-1]
-        views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-        likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
-        comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
         
-        pub_at_raw = latest_row.get('published_at')
-        if pd.isna(pub_at_raw) or str(pub_at_raw) == 'None':
-            snippets = fetch_video_snippets([v_id], YOUTUBE_API_KEY)
-            pub_at_raw = snippets.get(v_id, {}).get('published_at', now_utc.isoformat())
-            
-        pub_at = pd.to_datetime(pub_at_raw, utc=True)
-        pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+        # 過去データを探す（最新から「10秒以上」離れている直近データ）
+        ref_row = None
+        for i in range(len(df_v)-2, -1, -1): 
+            candidate = df_v.iloc[i]
+            diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+            if diff_sec >= 10: 
+                ref_row = candidate
+                break
         
-        full_title = get_real_title(v_id, latest_row.get('title'), YOUTUBE_API_KEY)
-        short_title = clean_title(full_title)
-        
-        lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
-        lifetime_vph = round(views / lifetime_hours, 1)
-        
-        if rec_count >= 2:
-            # ★【根本修正】1件目ではなく「直近の1つ前のレコード(iloc[-2])」と比較する
-            prev_row = df_v.iloc[-2]
+        # 10秒以上離れていなければ、問答無用で一番最初のデータ(1件目)を採用
+        if ref_row is None:
+            ref_row = df_v.iloc[0]
+
+        # 再生数と経過時間の差分
+        tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
+        latest_views = int(latest_row.get('views', latest_row.get('view_count', 0)))
+        ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
+        views_diff = max(0, latest_views - ref_views)
+
+        if tracking_hours > 0:
+            current_vph = round(views_diff / tracking_hours, 1)
+            momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+            is_real_tracking = True
             
-            # もし最新と1つ前の時間差が短すぎる（3分未満）場合は、少し遡って時間差がある直近レコードを探す
-            for i in range(2, min(rec_count, 15) + 1):
-                candidate = df_v.iloc[-i]
-                h_diff = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds() / 3600
-                if h_diff >= 0.05: # 約3分以上の差がある直近データを選択
-                    prev_row = candidate
-                    break
-            
-            tracking_hours = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds() / 3600
-            prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
-            views_diff = max(views - prev_views, 0)
-            
-            if tracking_hours > 0:
-                current_vph = round(views_diff / tracking_hours, 1)
-                momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-                is_real_tracking = True
-                
-                mins = round(tracking_hours * 60)
-                if mins < 60:
-                    tracking_time_str = f"直近{max(mins, 1)}分間の勢い"
-                else:
-                    tracking_time_str = f"直近{round(tracking_hours, 1)}時間の勢い"
-            else:
-                current_vph = lifetime_vph
-                momentum_ratio = 1.0
-                is_real_tracking = False
-                tracking_time_str = "時間差不足"
+            mins = round(tracking_hours * 60)
+            tracking_time_str = f"直近 {mins} 分間の実測" if mins < 60 else f"直近 {round(tracking_hours, 1)} 時間の実測"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
             is_real_tracking = False
-            tracking_time_str = "蓄積不足 (1件)"
+            tracking_time_str = "時間差0のため通算と同値"
+    else:
+        current_vph = lifetime_vph
+        momentum_ratio = 1.0
+        is_real_tracking = False
+        tracking_time_str = "データ不足のため通算と同値"
 
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
         "short_title": short_title,
-        "views": views,
-        "likes": likes,
-        "comments": comments,
+        "views": current_views,
+        "likes": current_likes,
+        "comments": current_comments,
         "published_at_jst": pub_at_jst,
         "lifetime_hours": round(lifetime_hours, 1),
         "lifetime_vph": lifetime_vph,
@@ -490,8 +469,7 @@ for v_id in video_ids:
         "momentum_ratio": momentum_ratio,
         "is_real_tracking": is_real_tracking,
         "tracking_time_str": tracking_time_str,
-        "pub_day": pub_at_jst.strftime('%A'),
-        "pub_hour": pub_at_jst.hour
+        "rec_count": len(df_v)
     })
 
 if summary_data:
@@ -499,84 +477,71 @@ if summary_data:
 else:
     st.warning("⚠️ 有効なYouTube URLを入力してください。")
     st.stop()
-    
-# ==========================================
-# 機能 1:  2軸スピード比較（通算平均 vs 直近時速）
-# ==========================================
-st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
 
-has_real_tracking = any(df_summary['is_real_tracking']) if 'is_real_tracking' in df_summary.columns else False
-if not has_real_tracking:
-    st.info(" **ベースライン（1回目のデータ）を保存しました。**\n\n時間を置いてサイドバーの「最新データに手動更新」を押すと、2回目のデータが記録され、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
+# ==========================================
+# 機能 1: 📊 2軸スピード比較（通算ベース × 直近勢い）
+# ==========================================
+st.markdown("### 1. ヒットスピード比較 (通算平均伸び × 直近のバズ勢い)")
+st.info("時間を置いてサイドバーの「最新データに更新 ＆ 記録」を押すと、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    fig_vph = go.Figure()
-
-    # 1. 通算ヒットペース (青色の棒)
-    fig_vph.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['lifetime_vph'],
-        name='通算ヒットペース (平均時速)',
-        marker_color='#1f77b4',
-        text=[f"{v:,.0f}" for v in df_summary['lifetime_vph']],
-        textposition='auto',
-        hovertext=df_summary['full_title']
-    ))
-
-    # 2. 現在のバズ勢い (オレンジ色の棒)
-    fig_vph.add_trace(go.Bar(
-        x=df_summary['short_title'],
-        y=df_summary['current_vph'],
-        name='現在のバズ勢い (直近時速)',
-        marker_color='#ff7f0e',
-        text=[f"{v:,.0f}" for v in df_summary['current_vph']],
-        textposition='auto',
-        hovertext=df_summary['full_title']
-    ))
-
-    fig_vph.update_layout(
-        barmode='group', # 2本並列表示
-        title="動画別 再生速度（VPH）比較",
-        xaxis_title="動画タイトル (曲名 / アーティスト)",
-        yaxis_title="再生増加数 (回 / 時間)",
-        legend=dict(orientation="h", y=1.15)
+    st.markdown("##### 動画別 再生速度（VPH）比較")
+    
+    chart_data = []
+    for _, row in df_summary.iterrows():
+        chart_data.append({"動画タイトル": row['short_title'], "指標": "通算ヒットベース（平均時速）", "VPH": row['lifetime_vph']})
+        chart_data.append({"動画タイトル": row['short_title'], "指標": "現在のバズ勢い（直近時速）", "VPH": row['current_vph']})
+    
+    df_chart = pd.DataFrame(chart_data)
+    
+    import altair as alt
+    bars = alt.Chart(df_chart).mark_bar().encode(
+        x=alt.X('動画タイトル:N', title="動画タイトル (曲名 / アーティスト)", sort=None),
+        y=alt.Y('VPH:Q', title="再生増加数 (回 / 時間)"),
+        color=alt.Color('指標:N', scale=alt.Scale(domain=['通算ヒットベース（平均時速）', '現在のバズ勢い（直近時速）'], range=['#1f77b4', '#ff7f0e'])),
+        xOffset=alt.XOffset('指標:N'),
+        tooltip=['動画タイトル', '指標', 'VPH']
     )
-    st.plotly_chart(fig_vph, use_container_width=True)
+    
+    text = bars.mark_text(align='center', baseline='bottom', dy=-5, color='white', fontSize=10).encode(
+        text=alt.Text('VPH:Q', format=',.0f')
+    )
+    
+    st.altair_chart((bars + text).properties(height=400), use_container_width=True)
 
 with col2:
-    st.markdown("#####  スピード & 勢い判定")
+    st.markdown("##### 🚀 スピード & 勢い判定")
     for _, row in df_summary.iterrows():
-        v_id = row['video_id']
-        df_v = df_filtered[df_filtered['video_id'] == v_id] if not df_filtered.empty else pd.DataFrame()
-        rec_count = len(df_v)
-        
         l_vph = row['lifetime_vph']
         ratio = row['momentum_ratio']
         
         if l_vph >= 10000:
-            speed_rank = " Sランク (1万+ VPH)"
+            speed_rank = "🔥 Sランク (1万+ VPH)"
         elif l_vph >= 3000:
-            speed_rank = " Aランク (3,000+ VPH)"
+            speed_rank = "✨ Aランク (3,000+ VPH)"
         elif l_vph >= 1000:
-            speed_rank = " Bランク (1,000+ VPH)"
+            speed_rank = "👍 Bランク (1,000+ VPH)"
         else:
-            speed_rank = " Cランク (1,000未満)"
+            speed_rank = "👀 Cランク (1,000未満)"
 
         st.write(f"**{row['short_title']}**")
-        st.caption(f" DB蓄積データ: **{rec_count}件**")
-        
+        st.caption(f"📦 DB蓄積データ: **{row['rec_count']}件**")
         st.write(f"・通算規模: **{speed_rank}**")
+        
+        # ★ ここで画面の表示が切り替わる！
         if row['is_real_tracking']:
-            status_str = " 加速中" if ratio > 1.05 else (" 減速中" if ratio < 0.95 else " 安定維持")
-            st.caption(f"・直近勢い: **{ratio}倍 ({status_str})** [{row['tracking_time_str']}]")
+            status = "⚡ 加速中" if ratio > 1.05 else ("📉 減速中" if ratio < 0.95 else "➡️ 安定維持")
+            st.markdown(f"・直近勢い: **{ratio}倍 ({status})** <span style='font-size:0.8em;color:gray;'>[{row['tracking_time_str']}]</span>", unsafe_allow_html=True)
         else:
-            st.caption("・直近勢い: 蓄積中 (データ1件のため通算と同値)")
+            st.markdown(f"・直近勢い: <span style='color:gray;'>⏳ 蓄積中 ({row['tracking_time_str']})</span>", unsafe_allow_html=True)
             
-        st.write(f"・直近時速: `{row['current_vph']:,} 回/時`")
-        st.write(f"・通算時速: `{l_vph:,} 回/時`")
+        st.write(f"・直近時速: `{row['current_vph']:,.1f} 回/時`")
+        st.write(f"・通算時速: `{l_vph:,.1f} 回/時`")
         st.divider()
+    
+
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
 # =========================================
