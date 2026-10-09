@@ -325,7 +325,8 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
                 if res.status_code in [200, 201]:
                         save_count += 1
                     
-                else: error_mg = f"ステータス: {res.status_code} | 内容: {res.text}"
+                else: 
+                    error_mg = f"ステータス: {res.status_code} | 内容: {res.text}"
         
         # エラーがあった場合は赤い警告を出す
         if error_msg:
