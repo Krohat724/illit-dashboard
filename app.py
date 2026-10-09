@@ -442,7 +442,13 @@ for v_id in video_ids:
         lifetime_vph = round(views / lifetime_hours, 1)
         
         # 【オレンジグラフ用】直近勢い（現在速度）の計算
-        if rec_count >= 2:
+        if len(df_v) >= 2:
+            #時間順に並び替え
+            df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
+            df_v = df_v.sort_values('ts_dt')
+
+            latest_row = df_v.iloc[-1]
+            
             # 過去データを探す（最新から「約3分以上前」の直近データ）
             ref_row = None
             for i in range(len(df_v)-2, -1, -1): 
@@ -496,7 +502,7 @@ for v_id in video_ids:
         "momentum_ratio": momentum_ratio,
         "is_real_tracking": is_real_tracking,
         "tracking_time_str": tracking_time_str,
-        "rec_count": rec_count,
+        "rec_count": len(df_v),
         "pub_day": pub_at_jst.strftime('%A'),
         "pub_hour": pub_at_jst.hour
     })
