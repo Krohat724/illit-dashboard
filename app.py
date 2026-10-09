@@ -388,53 +388,37 @@ now_utc = datetime.now(timezone.utc)
 # 4. 指標計算ロジック（実測差分VPH計算）
 # ==========================================
 summary_data = []
-# 比較用の現在時刻（エラーの原因になるタイムゾーン情報を最初から剥ぎ取っておく）
-now_utc_naive = pd.Timestamp.utcnow().tz_localize(None)
+now_utc = datetime.now(timezone.utc)
 
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
-    # 1. 基礎データの取得
-    if not df_v.empty:
-        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
-        df_v = df_v.sort_values('ts_dt')
-        latest_row = df_v.iloc[-1]
-        
-        current_views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-        current_likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
-        current_comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
-        
-        pub_at_raw = latest_row.get('published_at')
-        title_raw = latest_row.get('title')
-    else:
-        ls = live_stats.get(v_id, {}) if 'live_stats' in locals() else {}
-        current_views = ls.get('views', 0)
-        current_likes = ls.get('likes', 0)
-        current_comments = ls.get('comments', 0)
-        pub_at_raw = ls.get('published_at')
-        title_raw = ls.get('title')
-
-    # 2. 共通情報の整形（エラーの原因だった tz_convert を完全撤廃！）
-    try:
-        # UTCとして読み込み、エラーの元となるタイムゾーン情報を強制削除する
-        pub_at_naive = pd.to_datetime(pub_at_raw, utc=True).tz_localize(None)
-    except:
-        pub_at_naive = now_utc_naive
-
-    # tz_convertを一切使わず、単純に「9時間足して」日本時間にする
-    pub_at_jst = pub_at_naive + pd.Timedelta(hours=9)
+    # 最新のYouTube API情報（フォールバック用）
+    ls = live_stats.get(v_id, {})
+    current_views = ls.get('views', 0)
+    current_likes = ls.get('likes', 0)
+    current_comments = ls.get('comments', 0)
     
-    full_title = get_real_title(v_id, title_raw, YOUTUBE_API_KEY)
+    pub_at_raw = ls.get('published_at', now_utc.isoformat())
+    pub_at = pd.to_datetime(pub_at_raw, utc=True)
+    pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
+    
+    full_title = get_real_title(v_id, ls.get('title'), YOUTUBE_API_KEY)
     short_title = clean_title(full_title)
     
-    # 3. 通算スピード（青グラフ）計算
-    lifetime_hours = max((now_utc_naive - pub_at_naive).total_seconds() / 3600, 0.01)
+    # 通算スピード計算
+    lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.01)
     lifetime_vph = round(current_views / lifetime_hours, 1)
 
-    # 4. 直近勢い（オレンジグラフ）の計算
+    # --- 直近勢い（オレンジグラフ）の計算 ---
     if len(df_v) >= 2:
+        # 時間順に並び替え
+        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
+        df_v = df_v.sort_values('ts_dt')
+        
         latest_row = df_v.iloc[-1]
         
+        # 過去データを探す（最新から「10秒以上」離れている直近データ）
         ref_row = None
         for i in range(len(df_v)-2, -1, -1): 
             candidate = df_v.iloc[i]
@@ -443,9 +427,11 @@ for v_id in video_ids:
                 ref_row = candidate
                 break
         
+        # 10秒以上離れていなければ、問答無用で一番最初のデータ(1件目)を採用
         if ref_row is None:
             ref_row = df_v.iloc[0]
 
+        # 再生数と経過時間の差分
         tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
         latest_views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
