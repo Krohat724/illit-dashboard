@@ -269,7 +269,7 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title("競合トラッキング設定")
+st.sidebar.title(" 競合トラッキング設定")
 
 st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
@@ -286,7 +286,7 @@ urls_text = st.sidebar.text_area(
 
 st.session_state.saved_urls_text = urls_text
 
-# 1. URLからvideo_idsを抽出（ここで先にvideo_idsを必ず作成する）
+# 1. URLから video_ids を抽出
 raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
 video_ids = []
 for u in raw_urls[:15]:
@@ -296,43 +296,39 @@ for u in raw_urls[:15]:
 
 st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15本")
 
-# 2. 更新ボタン・強制保存ボタン
-col_sb1, col_sb2 = st.sidebar.columns(2)
-with col_sb1:
-    if st.button("通常更新", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-with col_sb2:
-    if st.button("強制スナップ保存", use_container_width=True):
-        st.cache_data.clear()
-        if video_ids:
-            now_iso = datetime.now(timezone.utc).isoformat()
-            headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json"
-            }
-            save_count = 0
-            current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
-            for v_id in video_ids:
-                ls = current_live_stats.get(v_id, {})
-                if ls:
-                    payload = {
-                        "video_id": v_id,
-                        "title": ls.get("title", "Unknown"),
-                        "views": ls.get("views", 0),
-                        "likes": ls.get("likes", 0),
-                        "comments": ls.get("comments", 0),
-                        "published_at": ls.get("published_at"),
-                        "timestamp": now_iso
-                    }
+# ★ 1つのボタンに統合！押すだけで「最新取得 ＋ DB打刻 ＋ 画面更新」を同時に実行
+if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_width=True):
+    st.cache_data.clear()
+    if video_ids and SUPABASE_URL and SUPABASE_KEY:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
+        current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
+        save_count = 0
+        for v_id in video_ids:
+            ls = current_live_stats.get(v_id, {})
+            if ls:
+                payload = {
+                    "video_id": v_id,
+                    "title": ls.get("title", "Unknown"),
+                    "views": ls.get("views", 0),
+                    "likes": ls.get("likes", 0),
+                    "comments": ls.get("comments", 0),
+                    "published_at": ls.get("published_at"),
+                    "timestamp": now_iso
+                }
+                try:
                     res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
                     if res.status_code in [200, 201]:
                         save_count += 1
-            if save_count > 0:
-                st.sidebar.success(f"⚡ {save_count}件保存しました！")
-                st.rerun()
+                except Exception:
+                    pass
+        if save_count > 0:
+            st.sidebar.success(f" 最新データを取得し、{save_count}件のスナップショットを記録しました！")
+            st.rerun()
 
 # 3. 追跡テーブルへの自動登録
 if video_ids and SUPABASE_URL and SUPABASE_KEY:
@@ -422,12 +418,17 @@ for v_id in video_ids:
         
         # 1回目の記録と最新の記録の差分から直近スピードを算出
         tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
-        if tracking_hours > 0.05:
-            views_diff = views - int(first_row.get('views', first_row.get('view_count', 0)))
-            current_vph = round(views_diff / tracking_hours, 1)
+        if tracking_hours > 0.005:  # 約18秒以上空いていれば差分計算を開始
+            views_diff = max(views - int(first_row.get('views', first_row.get('view_count', 0))), 0)
+            current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else lifetime_vph
             momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
             is_real_tracking = True
-            tracking_time_str = f"過去{round(tracking_hours*60)}分間の実測値"
+            
+            mins = round(tracking_hours * 60)
+            if mins < 60:
+                tracking_time_str = f"過去{max(mins, 1)}分間の実測値"
+            else:
+                tracking_time_str = f"過去{round(tracking_hours, 1)}時間の実測値"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
