@@ -269,7 +269,7 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title("🎯 競合トラッキング設定")
+st.sidebar.title("競合トラッキング設定")
 
 st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
@@ -299,12 +299,12 @@ st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15�
 # 2. 更新ボタン・強制保存ボタン
 col_sb1, col_sb2 = st.sidebar.columns(2)
 with col_sb1:
-    if st.button("🔄 通常更新", use_container_width=True):
+    if st.button("通常更新", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
 with col_sb2:
-    if st.button("⚡ 強制スナップ保存", use_container_width=True):
+    if st.button("強制スナップ保存", use_container_width=True):
         st.cache_data.clear()
         if video_ids:
             now_iso = datetime.now(timezone.utc).isoformat()
