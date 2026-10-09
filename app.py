@@ -390,10 +390,10 @@ now_utc = datetime.now(timezone.utc)
 summary_data = []
 
 for v_id in video_ids:
-    df_v = df_filtered[df_filtered['video_id'] == v_id].sort_values('timestamp') if not df_filtered.empty else pd.DataFrame()
+    df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
-    if df_v.empty or len(df_v) == 1:
-        # スナップショットが1件のみの場合（初回登録時）
+    if df_v.empty:
+        # DBにデータが一切ない場合
         ls = live_stats.get(v_id, {})
         views = ls.get('views', 0)
         likes = ls.get('likes', 0)
@@ -411,13 +411,16 @@ for v_id in video_ids:
         current_vph = lifetime_vph
         momentum_ratio = 1.0
         is_real_tracking = False
-        tracking_time_str = "追跡初期"
+        tracking_time_str = "データなし"
         
     else:
-        # スナップショットが2件以上存在する場合（差分から直近速度を計算）
-        latest_row = df_v.iloc[-1]
-        first_row = df_v.iloc[0]
+        # タイムスタンプを正しいdatetime型に変換して時系列ソート
+        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
+        df_v = df_v.sort_values('ts_dt')
+        rec_count = len(df_v)
         
+        # 最新のレコードを取得
+        latest_row = df_v.iloc[-1]
         views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
         comments = int(latest_row.get('comments', latest_row.get('comment_count', 0)))
@@ -436,26 +439,43 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 1回目の記録と最新の記録の差分から直近スピードを算出
-        tracking_hours = (latest_row['timestamp'] - first_row['timestamp']).total_seconds() / 3600
-        if tracking_hours > 0.005:  # 約18秒以上空いていれば差分計算を開始
-            views_diff = max(views - int(first_row.get('views', first_row.get('view_count', 0))), 0)
-            current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else lifetime_vph
-            momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-            is_real_tracking = True
+        if rec_count >= 2:
+            # ★【根本修正】1件目ではなく「直近の1つ前のレコード(iloc[-2])」と比較する
+            prev_row = df_v.iloc[-2]
             
-            mins = round(tracking_hours * 60)
-            if mins < 60:
-                tracking_time_str = f"過去{max(mins, 1)}分間の実測値"
+            # もし最新と1つ前の時間差が短すぎる（3分未満）場合は、少し遡って時間差がある直近レコードを探す
+            for i in range(2, min(rec_count, 15) + 1):
+                candidate = df_v.iloc[-i]
+                h_diff = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds() / 3600
+                if h_diff >= 0.05: # 約3分以上の差がある直近データを選択
+                    prev_row = candidate
+                    break
+            
+            tracking_hours = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds() / 3600
+            prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
+            views_diff = max(views - prev_views, 0)
+            
+            if tracking_hours > 0:
+                current_vph = round(views_diff / tracking_hours, 1)
+                momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+                is_real_tracking = True
+                
+                mins = round(tracking_hours * 60)
+                if mins < 60:
+                    tracking_time_str = f"直近{max(mins, 1)}分間の勢い"
+                else:
+                    tracking_time_str = f"直近{round(tracking_hours, 1)}時間の勢い"
             else:
-                tracking_time_str = f"過去{round(tracking_hours, 1)}時間の実測値"
+                current_vph = lifetime_vph
+                momentum_ratio = 1.0
+                is_real_tracking = False
+                tracking_time_str = "時間差不足"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
             is_real_tracking = False
-            tracking_time_str = "追跡初期"
+            tracking_time_str = "蓄積不足 (1件)"
 
-    # データリストへの格納処理
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
@@ -477,7 +497,7 @@ for v_id in video_ids:
 if summary_data:
     df_summary = pd.DataFrame(summary_data)
 else:
-    st.warning("有効なYouTube URLを入力してください。")
+    st.warning("⚠️ 有効なYouTube URLを入力してください。")
     st.stop()
     
 # ==========================================
