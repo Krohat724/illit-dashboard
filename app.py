@@ -393,7 +393,7 @@ now_utc = datetime.now(timezone.utc)
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
-    # 1. 基礎データの取得（DBの最新レコードから取得を最優先！）
+    # 1. 基礎データの取得（DBの最新レコードから取得を最優先）
     if not df_v.empty:
         df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
         df_v = df_v.sort_values('ts_dt')
@@ -414,8 +414,16 @@ for v_id in video_ids:
         pub_at_raw = ls.get('published_at', now_utc.isoformat())
         title_raw = ls.get('title')
 
-    # 2. 共通情報の整形
-    pub_at = pd.to_datetime(pub_at_raw, utc=True) if pd.notna(pub_at_raw) and str(pub_at_raw) != 'None' else now_utc
+    # 2. 共通情報の整形（タイムゾーン安全変換）
+    try:
+        pub_at = pd.to_datetime(pub_at_raw, utc=True)
+        if pd.isna(pub_at):
+            pub_at = now_utc
+    except Exception:
+        pub_at = now_utc
+
+    if pub_at.tzinfo is None:
+        pub_at = pub_at.tz_localize('UTC')
     pub_at_jst = pub_at.tz_convert('Asia/Tokyo')
     
     full_title = get_real_title(v_id, title_raw, YOUTUBE_API_KEY)
@@ -429,7 +437,7 @@ for v_id in video_ids:
     if len(df_v) >= 2:
         latest_row = df_v.iloc[-1]
         
-        # 過去データを探す（最新から「10秒以上」離れている直近データ）
+        # 最新データから「10秒以上」離れている直近データを探す
         ref_row = None
         for i in range(len(df_v)-2, -1, -1): 
             candidate = df_v.iloc[i]
@@ -438,7 +446,6 @@ for v_id in video_ids:
                 ref_row = candidate
                 break
         
-        # 10秒以上離れていなければ一番最初のデータ(1件目)を採用
         if ref_row is None:
             ref_row = df_v.iloc[0]
 
