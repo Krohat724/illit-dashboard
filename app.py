@@ -420,7 +420,7 @@ for v_id in video_ids:
 if summary_data:
     df_summary = pd.DataFrame(summary_data)
 else:
-    st.warning("⚠️ 有効なYouTube URLを入力してください。")
+    st.warning("有効なYouTube URLを入力してください。")
     st.stop()
     
 # ==========================================
@@ -430,7 +430,7 @@ st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近の�
 
 has_real_tracking = any(df_summary['is_real_tracking']) if 'is_real_tracking' in df_summary.columns else False
 if not has_real_tracking:
-    st.info(" **ベースライン（1回目のデータ）を保存しました。**\n\n時間を置いてサイドバーの「🔄 最新データに手動更新」を押すと、2回目のデータが記録され、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
+    st.info(" **ベースライン（1回目のデータ）を保存しました。**\n\n時間を置いてサイドバーの「最新データに手動更新」を押すと、2回目のデータが記録され、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
 
 col1, col2 = st.columns([2, 1])
 
