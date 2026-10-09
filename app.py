@@ -269,19 +269,44 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title(" 競合トラッキング設定")
+st.sidebar.title("🎯 競合トラッキング設定")
 
+st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
+
+if "saved_urls_text" not in st.session_state:
+    st.session_state.saved_urls_text = ""
+
+urls_text = st.sidebar.text_area(
+    "YouTube URL 一括入力",
+    value=st.session_state.saved_urls_text,
+    height=180,
+    placeholder="https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/watch?v=...",
+    key="url_text_area"
+)
+
+st.session_state.saved_urls_text = urls_text
+
+# 1. URLからvideo_idsを抽出（ここで先にvideo_idsを必ず作成する）
+raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
+video_ids = []
+for u in raw_urls[:15]:
+    v_id = extract_video_id(u)
+    if v_id and v_id not in video_ids:
+        video_ids.append(v_id)
+
+st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15本")
+
+# 2. 更新ボタン・強制保存ボタン
 col_sb1, col_sb2 = st.sidebar.columns(2)
 with col_sb1:
-    if st.button("通常更新", use_container_width=True):
+    if st.button("🔄 通常更新", use_container_width=True):
         st.cache_data.clear()
-        st.success("更新完了！")
+        st.rerun()
 
 with col_sb2:
-    # 10分待たずに強制的に2件目のスナップショットを打刻するテストボタン
     if st.button("⚡ 強制スナップ保存", use_container_width=True):
         st.cache_data.clear()
-        if 'video_ids' in locals() and video_ids:
+        if video_ids:
             now_iso = datetime.now(timezone.utc).isoformat()
             headers = {
                 "apikey": SUPABASE_KEY,
@@ -289,8 +314,9 @@ with col_sb2:
                 "Content-Type": "application/json"
             }
             save_count = 0
+            current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
             for v_id in video_ids:
-                ls = live_stats.get(v_id, {})
+                ls = current_live_stats.get(v_id, {})
                 if ls:
                     payload = {
                         "video_id": v_id,
@@ -304,14 +330,24 @@ with col_sb2:
                     res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
                     if res.status_code in [200, 201]:
                         save_count += 1
-                    else:
-                        st.sidebar.error(f"保存失敗({v_id}): {res.status_code} - {res.text}")
             if save_count > 0:
-                st.sidebar.success(f"⚡ {save_count}件のスナップショットを強制記録しました！")
+                st.sidebar.success(f"⚡ {save_count}件保存しました！")
                 st.rerun()
 
-st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
-
+# 3. 追跡テーブルへの自動登録
+if video_ids and SUPABASE_URL and SUPABASE_KEY:
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+    for v_id in video_ids:
+        try:
+            track_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/tracked_videos"
+            track_headers = {**headers, "Prefer": "resolution=ignore-duplicates"}
+            requests.post(track_url, headers=track_headers, json={"video_id": v_id}, timeout=3)
+        except Exception:
+            pass
 # ==========================================
 # 3. メイン画面ヘッダー
 # ==========================================
