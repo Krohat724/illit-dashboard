@@ -269,7 +269,7 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title(" 競合トラッキング設定")
+st.sidebar.title("🎯 競合トラッキング設定")
 
 st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
@@ -296,10 +296,18 @@ for u in raw_urls[:15]:
 
 st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15本")
 
-# ★ 1つのボタンに統合！押すだけで「最新取得 ＋ DB打刻 ＋ 画面更新」を同時に実行
+# ★ 更新＆記録ボタン（スコープ・インデント完全修正版）
 if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_width=True):
     st.cache_data.clear()
-    if video_ids and SUPABASE_URL and SUPABASE_KEY:
+    
+    save_count = 0
+    error_msg = ""
+    
+    if not video_ids:
+        st.sidebar.warning("⚠️ URLが入力されていません。")
+    elif not SUPABASE_URL or not SUPABASE_KEY:
+        st.sidebar.error("❌ Supabaseの接続情報(Secrets)が設定されていません。")
+    else:
         now_iso = datetime.now(timezone.utc).isoformat()
         headers = {
             "apikey": SUPABASE_KEY,
@@ -307,7 +315,7 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             "Content-Type": "application/json"
         }
         current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
-        save_count = 0
+        
         for v_id in video_ids:
             ls = current_live_stats.get(v_id, {})
             if ls:
@@ -320,22 +328,28 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
                     "published_at": ls.get("published_at"),
                     "timestamp": now_iso
                 }
-                res = requests.post(f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", headers=headers, json=payload, timeout=5)
-                    
-                if res.status_code in [200, 201]:
+                try:
+                    res = requests.post(
+                        f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats", 
+                        headers=headers, 
+                        json=payload, 
+                        timeout=5
+                    )
+                    if res.status_code in [200, 201]:
                         save_count += 1
-                    
-                else: 
-                    error_mg = f"ステータス: {res.status_code} | 内容: {res.text}"
+                    else:
+                        error_msg = f"HTTP {res.status_code}: {res.text}"
+                except Exception as e:
+                    error_msg = str(e)
         
-        # エラーがあった場合は赤い警告を出す
         if error_msg:
-            st.sidebar.error(f"❌ データベース保存エラー！\n{error_msg}")
+            st.sidebar.error(f"❌ 保存エラー発生:\n{error_msg}")
         elif save_count > 0:
             st.sidebar.success(f"✅ {save_count}件のスナップショットを記録しました！")
             import time
-            time.sleep(1) # 少し待ってから画面更新
+            time.sleep(1)
             st.rerun()
+
 # 3. 追跡テーブルへの自動登録
 if video_ids and SUPABASE_URL and SUPABASE_KEY:
     headers = {
