@@ -394,7 +394,7 @@ for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
     if df_v.empty:
-        # DBにデータが一切ない場合 (初回)
+        # DBにデータが一切ない場合 (初回登録時)
         ls = live_stats.get(v_id, {})
         views = ls.get('views', 0)
         likes = ls.get('likes', 0)
@@ -421,7 +421,7 @@ for v_id in video_ids:
         df_v = df_v.sort_values('ts_dt')
         rec_count = len(df_v)
         
-        # 【青グラフ用】確実にDBの最新レコードから通算時速を計算
+        # 【青グラフ用】確実な最新レコードから通算時速を計算
         latest_row = df_v.iloc[-1]
         views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
@@ -441,57 +441,53 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】直近勢い（現在速度）の計算
+        # 【オレンジグラフ用】明確な「過去データ」の抽出ロジック
         if rec_count >= 2:
-            latest_dt = latest_row['ts_dt']
             ref_row = None
             
-            # 【重要】数秒差の重複データを無視し、「最低1分以上前〜3時間以内」の過去データを確実に探す
-            for i in range(rec_count - 1):
+            # 1. 優先基準: 最新データから「1時間（3600秒）以上」離れているデータを探す
+            for i in range(rec_count - 2, -1, -1):
                 candidate = df_v.iloc[i]
-                diff_sec = (latest_dt - candidate['ts_dt']).total_seconds()
-                if 60 <= diff_sec <= 10800:
+                diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+                if diff_sec >= 3600:
                     ref_row = candidate
-                    break # 古い順から見ているので、条件に合致した一番最初のものが選ばれる
+                    break
             
-            # もし3時間以内のデータが無ければ、「1分以上前」のデータの中で一番新しいものを妥協して使う
+            # 2. 次点基準: 1時間前がなければ「15分（900秒）以上」離れているデータを探す
             if ref_row is None:
                 for i in range(rec_count - 2, -1, -1):
                     candidate = df_v.iloc[i]
-                    if (latest_dt - candidate['ts_dt']).total_seconds() >= 60:
+                    diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+                    if diff_sec >= 900:
                         ref_row = candidate
                         break
-            
-            # それでもダメ（全部1分以内の連打データ）なら、意地でも一番最初のデータを使う
-            if ref_row is None:
-                ref_row = df_v.iloc[0]
 
-            tracking_hours = (latest_dt - ref_row['ts_dt']).total_seconds() / 3600
-            
-            # エラー防止の最終関門：時間差が完全に0でなければ計算実行
-            if tracking_hours > 0: 
+            # 3. 15分以上離れた過去データが見つかった場合のみ計算（iloc[0]への逃げを撤廃）
+            if ref_row is not None:
+                tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
                 ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
                 views_diff = max(0, views - ref_views)
                 
-                current_vph = round(views_diff / tracking_hours, 1)
+                current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else lifetime_vph
                 momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
                 is_real_tracking = True
                 
-                mins = round(tracking_hours * 60, 1)
+                mins = round(tracking_hours * 60)
                 if mins < 60:
                     tracking_time_str = f"直近 {max(mins, 1)} 分間の実測"
                 else:
                     tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
             else:
+                # 15分以内の連打などの場合は「通算値と同値」に逃げず蓄積待ちとする
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "時間差が計測できないため通算と同値"
+                tracking_time_str = "データ蓄積中（15分以上の経過待ち）"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
             is_real_tracking = False
-            tracking_time_str = "蓄積データ1件のため通算と同値"
+            tracking_time_str = "データ不足（初回記録のみ）"
 
     summary_data.append({
         "video_id": v_id,
@@ -588,6 +584,7 @@ with col2:
         st.write(f"・直近時速: `{row['current_vph']:,.1f} 回/時`")
         st.write(f"・通算時速: `{l_vph:,.1f} 回/時`")
         st.divider()
+
 
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
