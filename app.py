@@ -441,7 +441,7 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-if len(df_v) >= 2:
+    if len(df_v) >= 2:
         # 時間順に並び替え
         df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
         df_v = df_v.sort_values('ts_dt')
