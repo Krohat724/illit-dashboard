@@ -443,23 +443,33 @@ for v_id in video_ids:
         
         # 【オレンジグラフ用】直近勢い（現在速度）の計算
         if rec_count >= 2:
-            # 【重要修正】デフォルトの比較対象を絶対に「1つ前の過去データ」にする
-            ref_row = df_v.iloc[-2] 
+            latest_dt = latest_row['ts_dt']
+            ref_row = None
             
-            # 古い順から見ていき、3時間以内のデータがあればそれを起点にする
-            # (len(df_v) - 1) にすることで、最新データ自身は絶対に探索対象から外す
-            for i in range(len(df_v) - 1): 
+            # 【重要】数秒差の重複データを無視し、「最低1分以上前〜3時間以内」の過去データを確実に探す
+            for i in range(rec_count - 1):
                 candidate = df_v.iloc[i]
-                diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                if diff_sec <= 10800: # 3時間以内なら採用してストップ
+                diff_sec = (latest_dt - candidate['ts_dt']).total_seconds()
+                if 60 <= diff_sec <= 10800:
                     ref_row = candidate
-                    break
+                    break # 古い順から見ているので、条件に合致した一番最初のものが選ばれる
             
-            # 最新データと過去データの時間差を計算
-            tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
+            # もし3時間以内のデータが無ければ、「1分以上前」のデータの中で一番新しいものを妥協して使う
+            if ref_row is None:
+                for i in range(rec_count - 2, -1, -1):
+                    candidate = df_v.iloc[i]
+                    if (latest_dt - candidate['ts_dt']).total_seconds() >= 60:
+                        ref_row = candidate
+                        break
             
-            # 連打で時間差が全くない場合（3.6秒以下）を除き、絶対に差分計算を実行する
-            if tracking_hours > 0.001: 
+            # それでもダメ（全部1分以内の連打データ）なら、意地でも一番最初のデータを使う
+            if ref_row is None:
+                ref_row = df_v.iloc[0]
+
+            tracking_hours = (latest_dt - ref_row['ts_dt']).total_seconds() / 3600
+            
+            # エラー防止の最終関門：時間差が完全に0でなければ計算実行
+            if tracking_hours > 0: 
                 ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
                 views_diff = max(0, views - ref_views)
                 
@@ -469,14 +479,14 @@ for v_id in video_ids:
                 
                 mins = round(tracking_hours * 60, 1)
                 if mins < 60:
-                    tracking_time_str = f"直近 {mins} 分間の実測"
+                    tracking_time_str = f"直近 {max(mins, 1)} 分間の実測"
                 else:
                     tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
             else:
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "時間差不足のため通算と同値"
+                tracking_time_str = "時間差が計測できないため通算と同値"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
@@ -507,6 +517,7 @@ if summary_data:
 else:
     st.warning("⚠️ 有効なYouTube URLを入力してください。")
     st.stop()
+
 # ==========================================
 # 機能 1: 📊 2軸スピード比較（通算平均伸び × 直近のバズ勢い）
 # ==========================================
@@ -577,7 +588,6 @@ with col2:
         st.write(f"・直近時速: `{row['current_vph']:,.1f} 回/時`")
         st.write(f"・通算時速: `{l_vph:,.1f} 回/時`")
         st.divider()
-    
 
 # ==========================================
 # 機能 2: 競合新曲 Launch Tracker（初速レーダー）
