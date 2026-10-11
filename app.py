@@ -421,7 +421,7 @@ for v_id in video_ids:
         df_v = df_v.sort_values('ts_dt')
         rec_count = len(df_v)
         
-        # 【青グラフ用】確実な最新レコードから通算時速を計算
+        # 【青グラフ用】通算時速（動画公開〜今回更新までの平均）
         latest_row = df_v.iloc[-1]
         views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
@@ -441,48 +441,35 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】明確な「過去データ」の抽出ロジック
+        # 【オレンジグラフ用】シンプルに「前回更新(iloc[-2])」と「今回更新(iloc[-1])」の差分で計算
         if rec_count >= 2:
-            ref_row = None
+            prev_row = df_v.iloc[-2] # 確実に1個前のデータ
             
-            # 1. 優先基準: 最新データから「1時間（3600秒）以上」離れているデータを探す
-            for i in range(rec_count - 2, -1, -1):
-                candidate = df_v.iloc[i]
-                diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                if diff_sec >= 3600:
-                    ref_row = candidate
-                    break
+            # 前回と今回の間の時間差（時間単位）
+            diff_sec = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds()
+            tracking_hours = diff_sec / 3600
             
-            # 2. 次点基準: 1時間前がなければ「15分（900秒）以上」離れているデータを探す
-            if ref_row is None:
-                for i in range(rec_count - 2, -1, -1):
-                    candidate = df_v.iloc[i]
-                    diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                    if diff_sec >= 900:
-                        ref_row = candidate
-                        break
-
-            # 3. 15分以上離れた過去データが見つかった場合のみ計算（iloc[0]への逃げを撤廃）
-            if ref_row is not None:
-                tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
-                ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
-                views_diff = max(0, views - ref_views)
-                
-                current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else lifetime_vph
+            # 前回と今回の間の再生数増加量
+            prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
+            views_diff = max(0, views - prev_views)
+            
+            # 30秒以上間隔が空いていれば、その区間の時速をダイレクトに算出
+            if diff_sec >= 30:
+                current_vph = round(views_diff / tracking_hours, 1)
                 momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
                 is_real_tracking = True
                 
-                mins = round(tracking_hours * 60)
+                mins = round(diff_sec / 60)
                 if mins < 60:
-                    tracking_time_str = f"直近 {max(mins, 1)} 分間の実測"
+                    tracking_time_str = f"前回の更新から{max(mins, 1)}分間の実測"
                 else:
-                    tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
+                    hours = round(tracking_hours, 1)
+                    tracking_time_str = f"前回の更新から{hours}時間の実測"
             else:
-                # 15分以内の連打などの場合は「通算値と同値」に逃げず蓄積待ちとする
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "データ蓄積中（15分以上の経過待ち）"
+                tracking_time_str = "連打防止（30秒以上あけて更新してください）"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
@@ -518,7 +505,7 @@ else:
 # 機能 1: 📊 2軸スピード比較（通算平均伸び × 直近のバズ勢い）
 # ==========================================
 st.subheader("1. 📊 ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
-st.info("💡 時間を置いてサイドバーの「最新データに更新 ＆ 記録」を押すと、差分から計算された『直近のバズ勢い（オレンジ）』が最新時速に切り替わります！")
+st.info("💡 時間を置いてサイドバーの「最新データに更新 ＆ 記録」を押すと、前回更新時からの差分で計算された『直近のバズ勢い（オレンジ）』が反映されます！")
 
 col1, col2 = st.columns([2, 1])
 
