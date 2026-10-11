@@ -200,8 +200,7 @@ def load_supabase_data():
         if res.status_code == 200:
             df = pd.DataFrame(res.json())
             if not df.empty:
-                # ★ 取得直後に「動画IDと時間が全く同じ」完全な重複ゴミデータを消し去る
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                # 型変換はせず、文字列のまま「完全に同じ時間のゴミデータ」だけを安全に消す
                 df = df.drop_duplicates(subset=['video_id', 'timestamp'], keep='last')
             return df
     except Exception:
@@ -350,6 +349,7 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
         if error_msg:
             st.sidebar.error(f"❌ 保存エラー発生:\n{error_msg}")
         elif save_count > 0:
+            load_supabase_data.clear()
             st.sidebar.success(f"✅ {save_count}件のスナップショットを記録しました！")
             import time
             time.sleep(1)
