@@ -441,53 +441,49 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】直近勢い（現在速度）の計算
-        if len(df_v) >= 2:
-            #時間順に並び替え
-            df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
-            df_v = df_v.sort_values('ts_dt')
+f len(df_v) >= 2:
+        # 時間順に並び替え
+        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
+        df_v = df_v.sort_values('ts_dt')
+        
+        latest_row = df_v.iloc[-1]
+        
+        # 過去データを探す（最新から「10秒以上」離れている直近データ）
+        ref_row = None
+        for i in range(len(df_v)-2, -1, -1): 
+            candidate = df_v.iloc[i]
+            diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+            if diff_sec >= 10: 
+                ref_row = candidate
+                break
+        
+        # 10秒以上離れていなければ、問答無用で一番最初のデータ(1件目)を採用
+        if ref_row is None:
+            ref_row = df_v.iloc[0]
 
-            latest_row = df_v.iloc[-1]
-            
-            # 過去データを探す（最新から「約3分以上前」の直近データ）
-            ref_row = None
-            for i in range(len(df_v)-2, -1, -1): 
-                candidate = df_v.iloc[i]
-                diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                if diff_sec >= 180: # 3分（180秒）以上前のデータを探す
-                    ref_row = candidate
-                    break
-            
-            # 3分以上空いていなければ、1つ前のデータを強制採用
-            if ref_row is None:
-                ref_row = df_v.iloc[-2]
+        # 再生数と経過時間の差分
+        tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
+        latest_views = int(latest_row.get('views', latest_row.get('view_count', 0)))
+        ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
+        views_diff = max(0, latest_views - ref_views)
 
-            # 再生数と経過時間の差分から時速を計算
-            tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
-            ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
-            views_diff = max(0, views - ref_views)
+        if tracking_hours > 0:
+            current_vph = round(views_diff / tracking_hours, 1)
+            momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+            is_real_tracking = True
             
-            if tracking_hours > 0.01: # 少しでも時間差があれば計算
-                current_vph = round(views_diff / tracking_hours, 1)
-                momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-                is_real_tracking = True
-                
-                mins = round(tracking_hours * 60)
-                if mins < 60:
-                    tracking_time_str = f"直近 {max(mins, 1)} 分間の実測"
-                else:
-                    tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
-            else:
-                current_vph = lifetime_vph
-                momentum_ratio = 1.0
-                is_real_tracking = False
-                tracking_time_str = "時間差不足のため通算と同値"
+            mins = round(tracking_hours * 60)
+            tracking_time_str = f"直近 {mins} 分間の実測" if mins < 60 else f"直近 {round(tracking_hours, 1)} 時間の実測"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
             is_real_tracking = False
-            tracking_time_str = "蓄積データ1件のため通算と同値"
-
+            tracking_time_str = "時間差0のため通算と同値"
+    else:
+        current_vph = lifetime_vph
+        momentum_ratio = 1.0
+        is_real_tracking = False
+        tracking_time_str = "データ不足のため通算と同値"
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
