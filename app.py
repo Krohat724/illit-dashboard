@@ -416,8 +416,9 @@ for v_id in video_ids:
         rec_count = 0
         
     else:
-        # ★ タイムスタンプを正確な日時型に揃えて確実に時間順に再ソート
+        # ★ 重複や連打による同タイムのバグデータを排除し、確実に時間順ソート
         df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
+        df_v = df_v.drop_duplicates(subset=['timestamp'], keep='last')
         df_v = df_v.sort_values('ts_dt', ascending=True).reset_index(drop=True)
         rec_count = len(df_v)
         
@@ -441,35 +442,35 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】正しくソートされた「前回(iloc[-2])」と「今回(iloc[-1])」の差分計算
+        # 【オレンジグラフ用】安全装置を全廃。純粋な「1個前 (iloc[-2])」との差分計算
         if rec_count >= 2:
-            prev_row = df_v.iloc[-2] # 正確に前回の打刻データ
+            prev_row = df_v.iloc[-2] # 確実に1個前のデータ
             
-            # 前回と今回の間の時間差（時間単位）
+            # 前回と今回の間の時間差（秒）
             diff_sec = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds()
-            tracking_hours = diff_sec / 3600
             
-            # 前回と今回の間の再生数増加量
-            prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
-            views_diff = max(0, views - prev_views)
-            
-            # 15秒以上間隔が空いていれば、その区間の時速を正確に算出
-            if diff_sec >= 15:
-                current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else 0
+            if diff_sec > 0:
+                tracking_hours = diff_sec / 3600
+                prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
+                views_diff = max(0, views - prev_views)
+                
+                # ダイレクトに時速を計算
+                current_vph = round(views_diff / tracking_hours, 1)
                 momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
                 is_real_tracking = True
                 
-                mins = round(diff_sec / 60)
-                if mins < 60:
-                    tracking_time_str = f"前回の記録から{max(mins, 1)}分間の実測"
+                # 何秒前・何分前のデータと比較したかUIで可視化する
+                if diff_sec < 60:
+                    tracking_time_str = f"前回（{int(diff_sec)}秒前）からの実測"
+                elif diff_sec < 3600:
+                    tracking_time_str = f"前回（{int(diff_sec/60)}分前）からの実測"
                 else:
-                    hours = round(tracking_hours, 1)
-                    tracking_time_str = f"前回の記録から{hours}時間の実測"
+                    tracking_time_str = f"前回（{round(tracking_hours, 1)}時間前）からの実測"
             else:
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "連打防止（15秒以上あけて更新してください）"
+                tracking_time_str = "エラー（時間差0秒）"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
@@ -505,7 +506,7 @@ else:
 # 機能 1: 📊 2軸スピード比較（通算平均伸び × 直近のバズ勢い）
 # ==========================================
 st.subheader("1. 📊 ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
-st.info("💡 時間を置いてサイドバーの「最新データに更新 ＆ 記録」を押すと、前回更新時からの差分で計算された『直近のバズ勢い（オレンジ）』が反映されます！")
+st.info("💡 サイドバーの「最新データに更新 ＆ 記録」を押すと、前回記録時からの純粋な差分で『直近のバズ勢い（オレンジ）』が計算されます。")
 
 col1, col2 = st.columns([2, 1])
 
@@ -564,9 +565,9 @@ with col2:
         
         if row['is_real_tracking']:
             status_str = "⚡ 加速中" if ratio > 1.05 else ("📉 減速中" if ratio < 0.95 else "➡️ 安定維持")
-            st.markdown(f"・直近勢い: **{ratio}倍 ({status_str})** <span style='font-size:0.8em;color:gray;'>[{row['tracking_time_str']}]</span>", unsafe_allow_html=True)
+            st.markdown(f"・直近勢い: **{ratio}倍 ({status_str})** <br><span style='font-size:0.8em;color:gray;'>[{row['tracking_time_str']}]</span>", unsafe_allow_html=True)
         else:
-            st.markdown(f"・直近勢い: <span style='color:gray;'>⏳ 蓄積中 ({row['tracking_time_str']})</span>", unsafe_allow_html=True)
+            st.markdown(f"・直近勢い: <span style='color:gray;'>⏳ {row['tracking_time_str']}</span>", unsafe_allow_html=True)
             
         st.write(f"・直近時速: `{row['current_vph']:,.1f} 回/時`")
         st.write(f"・通算時速: `{l_vph:,.1f} 回/時`")
