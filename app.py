@@ -398,8 +398,23 @@ now_utc = datetime.now(timezone.utc)
 for v_id in video_ids:
     df_v = df_filtered[df_filtered['video_id'] == v_id].copy() if not df_filtered.empty else pd.DataFrame()
     
+    # ★ 【最重要】バグの元凶である「空のタイムスタンプ（ゴミデータ）」を計算前に完全に破壊する
+    if not df_v.empty:
+        if 'timestamp' not in df_v.columns and 'created_at' in df_v.columns:
+            df_v['timestamp'] = df_v['created_at']
+        
+        # 文字列を日時に変換（失敗した行は「NaT」という無効値になる）
+        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True, errors='coerce')
+        
+        # 「NaT」が入っている不良データをここで完全に消去！（これが全てのエラーの犯人だった）
+        df_v = df_v.dropna(subset=['ts_dt'])
+        
+        # 綺麗になったデータで重複を消し、確実に時間順に並べ直す
+        df_v = df_v.drop_duplicates(subset=['ts_dt'], keep='last')
+        df_v = df_v.sort_values('ts_dt', ascending=True).reset_index(drop=True)
+    
+    # もし全部不良データだった場合、あるいは本当にデータが1件もない場合は初回扱い
     if df_v.empty:
-        # DBにデータが一切ない場合 (初回登録時)
         ls = live_stats.get(v_id, {})
         views = ls.get('views', 0)
         likes = ls.get('likes', 0)
@@ -421,13 +436,9 @@ for v_id in video_ids:
         rec_count = 0
         
     else:
-        # ★ 重複や連打による同タイムのバグデータを排除し、確実に時間順ソート
-        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
-        df_v = df_v.drop_duplicates(subset=['timestamp'], keep='last')
-        df_v = df_v.sort_values('ts_dt', ascending=True).reset_index(drop=True)
         rec_count = len(df_v)
         
-        # 【青グラフ用】通算時速（動画公開〜今回更新までの平均）
+        # 【青グラフ用】通算時速（不良データが消えたので、絶対に本物の最新データが取れる）
         latest_row = df_v.iloc[-1]
         views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
@@ -447,23 +458,21 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】安全装置を全廃。純粋な「1個前 (iloc[-2])」との差分計算
-        # 【オレンジグラフ用】重複ゴミデータを無視し、確実に時間が離れた直前のデータを探す
+        # 【オレンジグラフ用】正確な過去データとの差分計算
         if rec_count >= 2:
             prev_row = None
             diff_sec = 0
             
-            # 最新(iloc[-1])から過去に向かって遡り、時間が1秒以上離れているデータを見つける
+            # 最新(iloc[-1])から過去に向かって遡る
             for i in range(rec_count - 2, -1, -1):
                 candidate = df_v.iloc[i]
                 diff = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                if diff > 0:
+                if diff >= 1: # 1秒以上離れていれば本物の過去データ
                     prev_row = candidate
                     diff_sec = diff
                     break
             
             if prev_row is not None and diff_sec >= 15:
-                # 無事に過去データが見つかり、かつ15秒以上離れている場合
                 tracking_hours = diff_sec / 3600
                 prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
                 views_diff = max(0, views - prev_views)
@@ -480,14 +489,12 @@ for v_id in video_ids:
                     tracking_time_str = f"前回（{hours}時間前）からの実測"
             
             elif prev_row is not None and diff_sec < 15:
-                # 連打などで15秒未満しか経っていない場合
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
                 tracking_time_str = "連打防止（15秒以上あけて更新してください）"
             
             else:
-                # 遡っても同じ時間のゴミデータしかなかった場合
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
