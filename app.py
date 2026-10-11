@@ -443,19 +443,23 @@ for v_id in video_ids:
         
         # 【オレンジグラフ用】直近勢い（現在速度）の計算
         if rec_count >= 2:
-            # 直近の勢いを測るため、「最新から過去3時間以内」で一番古いデータを比較対象にする
-            ref_row = df_v.iloc[0] # デフォルトは全データで一番古いもの
-            for i in range(len(df_v)):
+            # 【重要修正】デフォルトの比較対象を絶対に「1つ前の過去データ」にする
+            ref_row = df_v.iloc[-2] 
+            
+            # 古い順から見ていき、3時間以内のデータがあればそれを起点にする
+            # (len(df_v) - 1) にすることで、最新データ自身は絶対に探索対象から外す
+            for i in range(len(df_v) - 1): 
                 candidate = df_v.iloc[i]
                 diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-                if diff_sec <= 10800: # 3時間（10800秒）以内のデータを見つけたら起点にする
+                if diff_sec <= 10800: # 3時間以内なら採用してストップ
                     ref_row = candidate
                     break
             
+            # 最新データと過去データの時間差を計算
             tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
             
-            # セーフティ撤廃：1秒でも時間差があれば絶対に差分を計算する
-            if tracking_hours > 0: 
+            # 連打で時間差が全くない場合（3.6秒以下）を除き、絶対に差分計算を実行する
+            if tracking_hours > 0.001: 
                 ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
                 views_diff = max(0, views - ref_views)
                 
@@ -469,11 +473,10 @@ for v_id in video_ids:
                 else:
                     tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
             else:
-                # 完全に同一ミリ秒のデータしかない場合の最終防波堤
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "時間差ゼロのため通算と同値"
+                tracking_time_str = "時間差不足のため通算と同値"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
@@ -504,7 +507,6 @@ if summary_data:
 else:
     st.warning("⚠️ 有効なYouTube URLを入力してください。")
     st.stop()
-
 # ==========================================
 # 機能 1: 📊 2軸スピード比較（通算平均伸び × 直近のバズ勢い）
 # ==========================================
