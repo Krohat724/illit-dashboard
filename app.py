@@ -421,7 +421,7 @@ for v_id in video_ids:
         df_v = df_v.sort_values('ts_dt')
         rec_count = len(df_v)
         
-        # 【青グラフ用】確実にDBの最新レコードから通算時速を計算（以前の安定コード）
+        # 【青グラフ用】確実にDBの最新レコードから通算時速を計算
         latest_row = df_v.iloc[-1]
         views = int(latest_row.get('views', latest_row.get('view_count', 0)))
         likes = int(latest_row.get('likes', latest_row.get('like_count', 0)))
@@ -441,49 +441,45 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-    if len(df_v) >= 2:
-        # 時間順に並び替え
-        df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
-        df_v = df_v.sort_values('ts_dt')
-        
-        latest_row = df_v.iloc[-1]
-        
-        # 過去データを探す（最新から「10秒以上」離れている直近データ）
-        ref_row = None
-        for i in range(len(df_v)-2, -1, -1): 
-            candidate = df_v.iloc[i]
-            diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
-            if diff_sec >= 10: 
-                ref_row = candidate
-                break
-        
-        # 10秒以上離れていなければ、問答無用で一番最初のデータ(1件目)を採用
-        if ref_row is None:
-            ref_row = df_v.iloc[0]
-
-        # 再生数と経過時間の差分
-        tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
-        latest_views = int(latest_row.get('views', latest_row.get('view_count', 0)))
-        ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
-        views_diff = max(0, latest_views - ref_views)
-
-        if tracking_hours > 0:
-            current_vph = round(views_diff / tracking_hours, 1)
-            momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
-            is_real_tracking = True
+        # 【オレンジグラフ用】直近勢い（現在速度）の計算
+        if rec_count >= 2:
+            # 直近の勢いを測るため、「最新から過去3時間以内」で一番古いデータを比較対象にする
+            ref_row = df_v.iloc[0] # デフォルトは全データで一番古いもの
+            for i in range(len(df_v)):
+                candidate = df_v.iloc[i]
+                diff_sec = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+                if diff_sec <= 10800: # 3時間（10800秒）以内のデータを見つけたら起点にする
+                    ref_row = candidate
+                    break
             
-            mins = round(tracking_hours * 60)
-            tracking_time_str = f"直近 {mins} 分間の実測" if mins < 60 else f"直近 {round(tracking_hours, 1)} 時間の実測"
+            tracking_hours = (latest_row['ts_dt'] - ref_row['ts_dt']).total_seconds() / 3600
+            
+            # セーフティ撤廃：1秒でも時間差があれば絶対に差分を計算する
+            if tracking_hours > 0: 
+                ref_views = int(ref_row.get('views', ref_row.get('view_count', 0)))
+                views_diff = max(0, views - ref_views)
+                
+                current_vph = round(views_diff / tracking_hours, 1)
+                momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
+                is_real_tracking = True
+                
+                mins = round(tracking_hours * 60, 1)
+                if mins < 60:
+                    tracking_time_str = f"直近 {mins} 分間の実測"
+                else:
+                    tracking_time_str = f"直近 {round(tracking_hours, 1)} 時間の実測"
+            else:
+                # 完全に同一ミリ秒のデータしかない場合の最終防波堤
+                current_vph = lifetime_vph
+                momentum_ratio = 1.0
+                is_real_tracking = False
+                tracking_time_str = "時間差ゼロのため通算と同値"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
             is_real_tracking = False
-            tracking_time_str = "時間差0のため通算と同値"
-    else:
-        current_vph = lifetime_vph
-        momentum_ratio = 1.0
-        is_real_tracking = False
-        tracking_time_str = "データ不足のため通算と同値"
+            tracking_time_str = "蓄積データ1件のため通算と同値"
+
     summary_data.append({
         "video_id": v_id,
         "full_title": full_title,
@@ -498,7 +494,7 @@ for v_id in video_ids:
         "momentum_ratio": momentum_ratio,
         "is_real_tracking": is_real_tracking,
         "tracking_time_str": tracking_time_str,
-        "rec_count": len(df_v),
+        "rec_count": rec_count,
         "pub_day": pub_at_jst.strftime('%A'),
         "pub_hour": pub_at_jst.hour
     })
@@ -520,7 +516,7 @@ col1, col2 = st.columns([2, 1])
 with col1:
     fig_vph = go.Figure()
 
-    # 1. 通算ヒットペース (青色の棒: 見慣れた元のグラフ)
+    # 1. 通算ヒットペース (青色の棒)
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['lifetime_vph'],
@@ -531,7 +527,7 @@ with col1:
         hovertext=df_summary['full_title']
     ))
 
-    # 2. 現在のバズ勢い (オレンジ色の棒: こちらも元のデザイン)
+    # 2. 現在のバズ勢い (オレンジ色の棒)
     fig_vph.add_trace(go.Bar(
         x=df_summary['short_title'],
         y=df_summary['current_vph'],
