@@ -273,7 +273,7 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title("🎯 競合トラッキング設定")
+st.sidebar.title(" 競合トラッキング設定")
 
 st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
@@ -350,7 +350,7 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             st.sidebar.error(f"❌ 保存エラー発生:\n{error_msg}")
         elif save_count > 0:
             load_supabase_data.clear()
-            st.sidebar.success(f"✅ {save_count}件のスナップショットを記録しました！")
+            st.sidebar.success(f" {save_count}件のスナップショットを記録しました！")
             import time
             time.sleep(1)
             st.rerun()
@@ -533,8 +533,8 @@ else:
 # ==========================================
 # 機能 1: 📊 2軸スピード比較（通算平均伸び × 直近のバズ勢い）
 # ==========================================
-st.subheader("1. 📊 ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
-st.info("💡 サイドバーの「最新データに更新 ＆ 記録」を押すと、前回記録時からの純粋な差分で『直近のバズ勢い（オレンジ）』が計算されます。")
+st.subheader("1.  ヒットスピード比較（通算平均伸び × 直近のバズ勢い）")
+st.info(" サイドバーの「最新データに更新 ＆ 記録」を押すと、前回記録時からの差分で『直近のバズ勢い（オレンジ）』が計算されます。")
 
 col1, col2 = st.columns([2, 1])
 
@@ -573,29 +573,29 @@ with col1:
     st.plotly_chart(fig_vph, use_container_width=True)
 
 with col2:
-    st.markdown("##### 🚀 スピード & 勢い判定")
+    st.markdown("#####  スピード & 勢い判定")
     for _, row in df_summary.iterrows():
         l_vph = row['lifetime_vph']
         ratio = row['momentum_ratio']
         
         if l_vph >= 10000:
-            speed_rank = "🔥 Sランク (1万+ VPH)"
+            speed_rank = " Sランク (1万+ VPH)"
         elif l_vph >= 3000:
-            speed_rank = "✨ Aランク (3,000+ VPH)"
+            speed_rank = " Aランク (3,000+ VPH)"
         elif l_vph >= 1000:
-            speed_rank = "👍 Bランク (1,000+ VPH)"
+            speed_rank = " Bランク (1,000+ VPH)"
         else:
-            speed_rank = "👀 Cランク (1,000未満)"
+            speed_rank = " Cランク (1,000未満)"
 
         st.write(f"**{row['short_title']}**")
-        st.caption(f"📦 DB蓄積データ: **{row['rec_count']}件**")
+        st.caption(f" DB蓄積データ: **{row['rec_count']}件**")
         st.write(f"・通算規模: **{speed_rank}**")
         
         if row['is_real_tracking']:
-            status_str = "⚡ 加速中" if ratio > 1.05 else ("📉 減速中" if ratio < 0.95 else "➡️ 安定維持")
+            status_str = "⚡ 加速中" if ratio > 1.05 else (" 減速中" if ratio < 0.95 else " 安定維持")
             st.markdown(f"・直近勢い: **{ratio}倍 ({status_str})** <br><span style='font-size:0.8em;color:gray;'>[{row['tracking_time_str']}]</span>", unsafe_allow_html=True)
         else:
-            st.markdown(f"・直近勢い: <span style='color:gray;'>⏳ {row['tracking_time_str']}</span>", unsafe_allow_html=True)
+            st.markdown(f"・直近勢い: <span style='color:gray;'> {row['tracking_time_str']}</span>", unsafe_allow_html=True)
             
         st.write(f"・直近時速: `{row['current_vph']:,.1f} 回/時`")
         st.write(f"・通算時速: `{l_vph:,.1f} 回/時`")
