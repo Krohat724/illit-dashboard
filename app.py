@@ -195,7 +195,7 @@ def load_supabase_data():
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json"
         }
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc"
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             return pd.DataFrame(res.json())
@@ -416,9 +416,9 @@ for v_id in video_ids:
         rec_count = 0
         
     else:
-        # タイムスタンプを正しいdatetime型に変換して時系列ソート
+        # ★ タイムスタンプを正確な日時型に揃えて確実に時間順に再ソート
         df_v['ts_dt'] = pd.to_datetime(df_v['timestamp'], utc=True)
-        df_v = df_v.sort_values('ts_dt')
+        df_v = df_v.sort_values('ts_dt', ascending=True).reset_index(drop=True)
         rec_count = len(df_v)
         
         # 【青グラフ用】通算時速（動画公開〜今回更新までの平均）
@@ -441,9 +441,9 @@ for v_id in video_ids:
         lifetime_hours = max((now_utc - pub_at).total_seconds() / 3600, 0.1)
         lifetime_vph = round(views / lifetime_hours, 1)
         
-        # 【オレンジグラフ用】シンプルに「前回更新(iloc[-2])」と「今回更新(iloc[-1])」の差分で計算
+        # 【オレンジグラフ用】正しくソートされた「前回(iloc[-2])」と「今回(iloc[-1])」の差分計算
         if rec_count >= 2:
-            prev_row = df_v.iloc[-2] # 確実に1個前のデータ
+            prev_row = df_v.iloc[-2] # 正確に前回の打刻データ
             
             # 前回と今回の間の時間差（時間単位）
             diff_sec = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds()
@@ -453,23 +453,23 @@ for v_id in video_ids:
             prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
             views_diff = max(0, views - prev_views)
             
-            # 30秒以上間隔が空いていれば、その区間の時速をダイレクトに算出
-            if diff_sec >= 30:
-                current_vph = round(views_diff / tracking_hours, 1)
+            # 15秒以上間隔が空いていれば、その区間の時速を正確に算出
+            if diff_sec >= 15:
+                current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else 0
                 momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
                 is_real_tracking = True
                 
                 mins = round(diff_sec / 60)
                 if mins < 60:
-                    tracking_time_str = f"前回の更新から{max(mins, 1)}分間の実測"
+                    tracking_time_str = f"前回の記録から{max(mins, 1)}分間の実測"
                 else:
                     hours = round(tracking_hours, 1)
-                    tracking_time_str = f"前回の更新から{hours}時間の実測"
+                    tracking_time_str = f"前回の記録から{hours}時間の実測"
             else:
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "連打防止（30秒以上あけて更新してください）"
+                tracking_time_str = "連打防止（15秒以上あけて更新してください）"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
