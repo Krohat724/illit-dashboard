@@ -198,7 +198,12 @@ def load_supabase_data():
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc"
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
-            return pd.DataFrame(res.json())
+            df = pd.DataFrame(res.json())
+            if not df.empty:
+                # ★ 取得直後に「動画IDと時間が全く同じ」完全な重複ゴミデータを消し去る
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df = df.drop_duplicates(subset=['video_id', 'timestamp'], keep='last')
+            return df
     except Exception:
         pass
     return pd.DataFrame()
@@ -443,34 +448,50 @@ for v_id in video_ids:
         lifetime_vph = round(views / lifetime_hours, 1)
         
         # 【オレンジグラフ用】安全装置を全廃。純粋な「1個前 (iloc[-2])」との差分計算
+        # 【オレンジグラフ用】重複ゴミデータを無視し、確実に時間が離れた直前のデータを探す
         if rec_count >= 2:
-            prev_row = df_v.iloc[-2] # 確実に1個前のデータ
+            prev_row = None
+            diff_sec = 0
             
-            # 前回と今回の間の時間差（秒）
-            diff_sec = (latest_row['ts_dt'] - prev_row['ts_dt']).total_seconds()
+            # 最新(iloc[-1])から過去に向かって遡り、時間が1秒以上離れているデータを見つける
+            for i in range(rec_count - 2, -1, -1):
+                candidate = df_v.iloc[i]
+                diff = (latest_row['ts_dt'] - candidate['ts_dt']).total_seconds()
+                if diff > 0:
+                    prev_row = candidate
+                    diff_sec = diff
+                    break
             
-            if diff_sec > 0:
+            if prev_row is not None and diff_sec >= 15:
+                # 無事に過去データが見つかり、かつ15秒以上離れている場合
                 tracking_hours = diff_sec / 3600
                 prev_views = int(prev_row.get('views', prev_row.get('view_count', 0)))
                 views_diff = max(0, views - prev_views)
                 
-                # ダイレクトに時速を計算
-                current_vph = round(views_diff / tracking_hours, 1)
+                current_vph = round(views_diff / tracking_hours, 1) if tracking_hours > 0 else 0
                 momentum_ratio = round(current_vph / lifetime_vph, 2) if lifetime_vph > 0 else 1.0
                 is_real_tracking = True
                 
-                # 何秒前・何分前のデータと比較したかUIで可視化する
-                if diff_sec < 60:
-                    tracking_time_str = f"前回（{int(diff_sec)}秒前）からの実測"
-                elif diff_sec < 3600:
-                    tracking_time_str = f"前回（{int(diff_sec/60)}分前）からの実測"
+                mins = round(diff_sec / 60)
+                if mins < 60:
+                    tracking_time_str = f"前回（{max(int(diff_sec), 1)}秒前）からの実測"
                 else:
-                    tracking_time_str = f"前回（{round(tracking_hours, 1)}時間前）からの実測"
-            else:
+                    hours = round(tracking_hours, 1)
+                    tracking_time_str = f"前回（{hours}時間前）からの実測"
+            
+            elif prev_row is not None and diff_sec < 15:
+                # 連打などで15秒未満しか経っていない場合
                 current_vph = lifetime_vph
                 momentum_ratio = 1.0
                 is_real_tracking = False
-                tracking_time_str = "エラー（時間差0秒）"
+                tracking_time_str = "連打防止（15秒以上あけて更新してください）"
+            
+            else:
+                # 遡っても同じ時間のゴミデータしかなかった場合
+                current_vph = lifetime_vph
+                momentum_ratio = 1.0
+                is_real_tracking = False
+                tracking_time_str = "エラー（有効な過去データなし）"
         else:
             current_vph = lifetime_vph
             momentum_ratio = 1.0
