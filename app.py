@@ -10,16 +10,36 @@ import google.generativeai as genai
 
 
 # ==========================================
-# 👻 2. 鬱陶しいデフォルトボタンを消去（透明化）
+# 👻 修正版：ヘッダー・右下ボタンのみ非表示（サイドバーは保護）
 # ==========================================
 hide_streamlit_style = """
 <style>
-/* 右上のForkやGitHubなどのヘッダーメニューを非表示 */
-header {visibility: hidden;}
-#MainMenu {visibility: hidden;}
+/* 右上ヘッダー（Fork、GitHub等）を非表示 */
+header[data-testid="stHeader"] {
+    visibility: hidden !important;
+    height: 0px !important;
+}
 
-/* 右下のStreamlitウォーターマーク（フッター）を非表示 */
-footer {visibility: hidden;}
+/* フッター非表示 */
+footer {
+    visibility: hidden !important;
+}
+
+/* 右下のアカウントアイコン・Manage Appツールバーのみ非表示 */
+div[data-testid="stAppDeployButton"],
+div[data-testid="stToolbar"],
+div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"],
+section[data-testid="stSidebar"] ~ div[data-testid="stToolbar"] {
+    display: none !important;
+}
+
+/* ★サイドバーとその開閉ボタンは絶対に消さない（復旧指示） */
+section[data-testid="stSidebar"],
+button[data-testid="stSidebarCollapseButton"] {
+    visibility: visible !important;
+    display: flex !important;
+}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
