@@ -8,14 +8,7 @@ import streamlit as st
 from datetime import datetime, timezone
 import google.generativeai as genai
 
-# ==========================================
-# 🔒 1. 自分専用パスワードロック
-# ==========================================
-# サイドバーにパスワード入力欄を作り、合致しないとここから下の処理（画面表示）をストップする
-app_password = st.sidebar.text_input("🔐 パスワード", type="password")
-if app_password != "1234":  # 「1234」を好きなパスワードに変えてください
-    st.warning("自分専用アプリです。パスワードを入力してください。")
-    st.stop() # パスワードが合うまでここで処理を止める
+
 
 # ==========================================
 # 👻 2. 鬱陶しいデフォルトボタンを消去（透明化）
