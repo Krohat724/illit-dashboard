@@ -9,36 +9,20 @@ from datetime import datetime, timezone
 import google.generativeai as genai
 
 
-
 # ==========================================
-# 👻 ヘッダー・フッター・右下管理ボタンを完全非表示
+# 👻 2. 鬱陶しいデフォルトボタンを消去（透明化）
 # ==========================================
 hide_streamlit_style = """
 <style>
-/* 上部ヘッダー（Fork、GitHubアイコンなど）を非表示 */
-header, #MainMenu {
-    visibility: hidden !important;
-    display: none !important;
-}
+/* 右上のForkやGitHubなどのヘッダーメニューを非表示 */
+header {visibility: hidden;}
+#MainMenu {visibility: hidden;}
 
-/* 下部フッターを非表示 */
-footer {
-    visibility: hidden !important;
-    display: none !important;
-}
-
-/* 右下の管理ボタン（赤いManage app）・アカウントアイコンを非表示 */
-.stAppViewerToolBar, 
-[data-testid="stStatusWidget"], 
-[data-testid="stDecoration"], 
-[data-testid="stToolbar"] {
-    visibility: hidden !important;
-    display: none !important;
-}
+/* 右下のStreamlitウォーターマーク（フッター）を非表示 */
+footer {visibility: hidden;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
 # ==========================================
 # 0. ページ基本設定 & カスタムCSS
 # ==========================================
