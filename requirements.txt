@@ -6,3 +6,4 @@ google-genai
 pydantic
 reportlab
 plotly
+google-generativeai
