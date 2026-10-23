@@ -366,11 +366,10 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             load_supabase_data.clear() # 古いキャッシュを確実に破壊
             st.sidebar.success(f"✅ {save_count}件の最新データをDBに記録しました！")
             
-            # ※調査のため、自動リロードを一時的に「#」で無効化しています
-            # 成功メッセージと「🔍 201」が見えたら、この下の # を消して元に戻してください
-            # import time
-            # time.sleep(1)
-            # st.rerun()
+            
+            import time
+            time.sleep(1)
+            st.rerun()
         else:
             st.sidebar.warning("⚠️ 保存するデータがありませんでした。")
 # 3. 追跡テーブルへの自動登録
