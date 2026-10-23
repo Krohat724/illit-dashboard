@@ -318,14 +318,16 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json"
         }
+        
+        # 1. YouTubeから最新データを取得
         current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
+        
+        # ⚠️ もしYouTube APIからデータが空で返ってきたらここでストップして警告を出す
+        if not current_live_stats:
+            st.sidebar.error("⚠️ YouTubeデータの取得に失敗しました。（API上限かURLエラーの可能性）")
+            st.stop()
 
-        # 🔴【ここに追加①】↑の送信処理の「直下」にこれを挟む
-        if 'res' in locals():
-            st.sidebar.write(f"🔍 DB保存ステータス: {res.status_code}")
-            if res.status_code not in [200, 201]:
-                st.sidebar.error(f"⚠️ 保存エラー詳細: {res.text}")
-                st.stop()
+        # 2. Supabase(データベース)へ送信
         for v_id in video_ids:
             ls = current_live_stats.get(v_id, {})
             if ls:
@@ -345,28 +347,32 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
                         json=payload, 
                         timeout=5
                     )
+                    
+                    # 🔍【テスト表示】ここに書けば確実に通信結果が画面に出る
+                    st.sidebar.write(f"🔍 {v_id[:5]}... の保存結果: HTTP {res.status_code}")
+                    
                     if res.status_code in [200, 201]:
                         save_count += 1
                     else:
-                        error_msg = f"HTTP {res.status_code}: {res.text}"
+                        error_msg += f"{v_id} エラー: {res.text}\n"
                 except Exception as e:
-                    error_msg = str(e)
+                    error_msg += f"{v_id} 通信エラー: {str(e)}\n"
         
+        # 3. 最終結果の判定
         if error_msg:
             st.sidebar.error(f"❌ 保存エラー発生:\n{error_msg}")
         elif save_count > 0:
-            load_supabase_data.clear()
-            st.sidebar.success(f" {save_count}件のスナップショットを記録しました！")
-            import time
-            time.sleep(1)
-            st.rerun()
-# 🔴【ここに追加②】メッセージが出る「直前」にキャッシュクリアを挟む
-        load_supabase_data.clear()  
-        
-        st.sidebar.success("✅ データを更新し、DBに記録しました！")
-        
-        # 🔴【ここを変更】エラーの文字が消えないように、一度リロードを「#」で無効化する
-        # st.rerun()
+            # 完璧に保存成功した場合
+            load_supabase_data.clear() # 古いキャッシュを確実に破壊
+            st.sidebar.success(f"✅ {save_count}件の最新データをDBに記録しました！")
+            
+            # ※調査のため、自動リロードを一時的に「#」で無効化しています
+            # 成功メッセージと「🔍 201」が見えたら、この下の # を消して元に戻してください
+            # import time
+            # time.sleep(1)
+            # st.rerun()
+        else:
+            st.sidebar.warning("⚠️ 保存するデータがありませんでした。")
 # 3. 追跡テーブルへの自動登録
 if video_ids and SUPABASE_URL and SUPABASE_KEY:
     headers = {
