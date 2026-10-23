@@ -195,12 +195,15 @@ def load_supabase_data():
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json"
         }
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.asc"
+        # 🔴【最大の修正】desc（新しい順）にして最新の記録を確実に取得する。limit=3000で枠も広げる
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/multi_video_stats?select=*&order=timestamp.desc&limit=3000"
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             df = pd.DataFrame(res.json())
             if not df.empty:
-                # 型変換はせず、文字列のまま「完全に同じ時間のゴミデータ」だけを安全に消す
+                # 新しい順で取ってきたので、計算が狂わないようにアプリ内で「古い順(asc)」に戻す
+                if 'timestamp' in df.columns:
+                    df = df.sort_values('timestamp', ascending=True).reset_index(drop=True)
                 df = df.drop_duplicates(subset=['video_id', 'timestamp'], keep='last')
             return df
     except Exception:
