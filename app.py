@@ -319,7 +319,13 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             "Content-Type": "application/json"
         }
         current_live_stats = fetch_live_video_stats(video_ids, YOUTUBE_API_KEY)
-        
+
+        # 🔴【ここに追加①】↑の送信処理の「直下」にこれを挟む
+        if 'res' in locals():
+            st.sidebar.write(f"🔍 DB保存ステータス: {res.status_code}")
+            if res.status_code not in [200, 201]:
+                st.sidebar.error(f"⚠️ 保存エラー詳細: {res.text}")
+                st.stop()
         for v_id in video_ids:
             ls = current_live_stats.get(v_id, {})
             if ls:
@@ -354,7 +360,13 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
             import time
             time.sleep(1)
             st.rerun()
-
+# 🔴【ここに追加②】メッセージが出る「直前」にキャッシュクリアを挟む
+        load_supabase_data.clear()  
+        
+        st.sidebar.success("✅ データを更新し、DBに記録しました！")
+        
+        # 🔴【ここを変更】エラーの文字が消えないように、一度リロードを「#」で無効化する
+        # st.rerun()
 # 3. 追跡テーブルへの自動登録
 if video_ids and SUPABASE_URL and SUPABASE_KEY:
     headers = {
