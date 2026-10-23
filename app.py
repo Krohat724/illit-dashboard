@@ -275,7 +275,7 @@ df_filtered = df_all[df_all['video_id'].isin(video_ids)].copy() if (not df_all.e
 # ==========================================
 # 2. サイドバー：入力 & 手動更新
 # ==========================================
-st.sidebar.title(" 競合トラッキング設定")
+st.sidebar.title("🎯 競合トラッキング設定")
 
 st.sidebar.markdown("監視したい競合MVのURLを入力してください**（最大15本・改行区切り）**")
 
@@ -292,7 +292,7 @@ urls_text = st.sidebar.text_area(
 
 st.session_state.saved_urls_text = urls_text
 
-# 1. URLから video_ids を抽出
+# URLから video_ids を抽出
 raw_urls = [u.strip() for u in urls_text.split("\n") if u.strip()]
 video_ids = []
 for u in raw_urls[:15]:
@@ -302,9 +302,15 @@ for u in raw_urls[:15]:
 
 st.sidebar.caption(f"現在の比較対象: **{len(video_ids)}本** / 最大15本")
 
-# ★ 更新＆記録ボタン（スコープ・インデント完全修正版）
+# ★ 更新＆記録ボタン（すべてのキャッシュを強力クリアする仕様）
 if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_width=True):
+    # 【最重要】ボタンが押された瞬間に全キャッシュを強制破棄！
     st.cache_data.clear()
+    if "load_supabase_data" in globals():
+        try:
+            load_supabase_data.clear()
+        except Exception:
+            pass
     
     save_count = 0
     error_msg = ""
@@ -351,11 +357,12 @@ if st.sidebar.button("🔄 最新データに更新 ＆ 記録", use_container_w
         if error_msg:
             st.sidebar.error(f"❌ 保存エラー発生:\n{error_msg}")
         elif save_count > 0:
-            load_supabase_data.clear()
-            st.sidebar.success(f" {save_count}件のスナップショットを記録しました！")
+            # もう一度キャッシュをクリアして新しいデータを即座に反映
+            st.cache_data.clear()
+            st.sidebar.success(f"✅ {save_count}件のスナップショットを記録しました！")
             import time
-            time.sleep(1)
-            st.rerun()
+            time.sleep(0.5)
+            st.rerun() # 画面をリロードしてグラフを再描画
 
 # 3. 追跡テーブルへの自動登録
 if video_ids and SUPABASE_URL and SUPABASE_KEY:
